@@ -1,0 +1,28 @@
+{
+  "name": "js13k-starter",
+  "version": "1.0.0",
+  "main": "index.js",
+  "repository": "git@github.com:wvffle/js13k-starter.git",
+  "author": "Kasper Seweryn <github@wvffle.net>",
+  "license": "MIT",
+  "scripts": {
+    "build": "NODE_ENV=production node build.mjs",
+    "dev": "node build.mjs"
+  },
+  "devDependencies": {
+    "@rollup/plugin-node-resolve": "^9.0.0",
+    "chokidar": "^3.4.2",
+    "clean-css": "^4.2.3",
+    "esbuild": "^0.6.22",
+    "preprocess": "^3.2.0",
+    "pug": "^3.0.0",
+    "rollup": "^2.25.0",
+    "stylus": "^0.54.8",
+    "terser": "^5.0.0",
+    "tiny-lr": "^1.1.1",
+    "yazl": "^2.5.1"
+  },
+  "dependencies": {
+    "kontra": "^7.0.0"
+  }
+}

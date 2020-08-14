@@ -1,0 +1,22 @@
+doctype html
+html
+  head
+    meta(charset='utf-8')
+
+    if PRODUCTION
+      if css
+        style!=css
+    else
+      link(rel='stylesheet', href='main.css')
+
+  body
+    canvas#c
+
+    if PRODUCTION
+      if js
+        script!=js
+    else
+      script(src='main.js')
+      script.
+        window.LiveReloadOptions = { port: 443, https: 1, host: location.host }
+        document.write('<script src="//' + (location.host || 'localhost').split(':')[0] + '/livereload.js?snipver=1"></' + 'script>')

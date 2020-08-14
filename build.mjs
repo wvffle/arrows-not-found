@@ -9,8 +9,6 @@ import zip from './transformer/zip.mjs'
 
 const PRODUCTION = process.env.NODE_ENV === 'production'
 
-
-
 if (!PRODUCTION) {
   const sendFile = async (res, file) => {
     try {
@@ -40,46 +38,55 @@ if (!PRODUCTION) {
   }
 
 
-  server.listen(8080)
-
-  chokidar.watch('src').on('all', async (event, path) => {
-    if (~event.indexOf('Dir')) {
-      return
-    }
-
+  Promise.resolve().then(async () => {
     try {
-      switch (path.slice(path.lastIndexOf('.'))) {
-        case '.js':
-          await javascript(PRODUCTION)
-          console.log('@', path)
-          break
+      await fs.mkdir('public/')
+    } catch {}
 
-        case '.pug':
-          await pug(PRODUCTION)
-          console.log('@', path)
-          break
-
-        case '.styl':
-          await stylus(PRODUCTION)
-          console.log('@', path)
-          break
+    server.listen(8080)
+    chokidar.watch('src').on('all', async (event, path) => {
+      if (~event.indexOf('Dir')) {
+        return
       }
-    } catch (err) {
-      console.error(err.message || err)
-    }
-  })
 
-  // dist file watcher
-  chokidar.watch('public').on('all', (event, path) => {
-    if (~event.indexOf('Dir')) {
-      return
-    }
+      try {
+        switch (path.slice(path.lastIndexOf('.'))) {
+          case '.js':
+            await javascript(PRODUCTION)
+            console.log('@', path)
+            break
 
-    const file = path.slice(7)
-    server.changed({ body: { files: [file] } })
+          case '.pug':
+            await pug(PRODUCTION)
+            console.log('@', path)
+            break
+
+          case '.styl':
+            await stylus(PRODUCTION)
+            console.log('@', path)
+            break
+        }
+      } catch (err) {
+        console.error(err.message || err)
+      }
+    })
+
+    // dist file watcher
+    chokidar.watch('public').on('all', (event, path) => {
+      if (~event.indexOf('Dir')) {
+        return
+      }
+
+      const file = path.slice(7)
+      server.changed({ body: { files: [file] } })
+    })
   })
 } else {
   Promise.resolve().then(async () => {
+    try {
+      await fs.mkdir('public/')
+    } catch {}
+
     await Promise.all([
       await javascript(PRODUCTION),
       await stylus(PRODUCTION),

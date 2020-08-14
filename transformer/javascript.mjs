@@ -2,32 +2,21 @@ import pug from './pug.mjs'
 // import esbuild from 'esbuild'
 import { rollup } from 'rollup'
 import { nodeResolve } from '@rollup/plugin-node-resolve'
+import commonjs from '@rollup/plugin-commonjs'
+import json from '@rollup/plugin-json'
 import { promises as fs } from 'fs'
 import { minify } from 'terser'
 import preprocess from 'preprocess'
 
 export default async (PRODUCTION) => {
-  /*
-  const { outputFiles: [{ contents: bytes }]} = await esbuild.build({
-    bundle: true,
-    target: 'es2019',
-
-    minify: true,
-    write: false,
-
-    entryPoints: ['src/js/main.js'],
-
-    sourcefile: 'src/js/main.js',
-    sourcemap: PRODUCTION ? false : 'inline'
-  })
-  */
-
   const bundle = await rollup({
     input: {
       main: 'src/js/main.js'
     },
     plugins: [
-      nodeResolve()
+      nodeResolve(),
+      commonjs(),
+      json()
     ]
   })
   

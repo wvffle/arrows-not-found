@@ -2986,34 +2986,10 @@ for (let i = 0; i < xyTiles; ++i) {
 }
 
 
-const dfs = (start, { enter, leave }) => {
-  const stack = [start];
-  const visited = new Set();
-
-  while (stack.length) {
-    const node = stack.pop();
-
-    if (visited.has(node)) {
-      continue
-    }
-
-    visited.add(node);
-
-    enter && enter(node, visited);
-
-    for (const neighbour of node.neighbours) {
-      if (!visited.has(neighbour)) {
-        stack.push(neighbour);
-      }
-    }
-
-    leave && leave(node, visited);
-  }
-};
-
 const bfs = (start, { enter, leave }) => {
   const queue = [start];
   const visited = new Set();
+  const prev = new Map();
 
   while (queue.length) {
     const node = queue.shift();
@@ -3024,15 +3000,16 @@ const bfs = (start, { enter, leave }) => {
 
     visited.add(node);
 
-    enter && enter(node, visited);
+    enter && enter(node, visited, prev.get(node));
 
     for (const neighbour of node.neighbours) {
       if (!visited.has(neighbour)) {
+        prev.set(neighbour, node);
         queue.push(neighbour);
       }
     }
 
-    leave && leave(node, visited);
+    leave && leave(node, visited, prev.get(node));
   }
 };
 
@@ -3158,14 +3135,15 @@ for (let j = 0; j < triangles.length; j += 3) {
 }
 
 const mst = [];
-console.log(lastNode);
-dfs(lastNode, {
-  leave (node) {
-    mst.push(node);
+bfs(lastNode, {
+  leave (node, _, prev) {
+    if (prev) {
+      mst.push([prev, node]);
+    }
   }
 });
 
-console.log(mst);
+console.log(mst[0]);
 
 const renderLoop = GameLoop({
   update () {
@@ -3190,32 +3168,20 @@ const renderLoop = GameLoop({
     for (const tile of tiles) {
       tile.render();
     }
+
     credits.render();
 
     // @ifdef DEBUG
-    const { x, y } = mst[0].data;
-    context$1.fillText(1, x * TILE_SIZE + TILE_SIZE, y * TILE_SIZE + TILE_SIZE);
-    context$1.beginPath();
-    context$1.moveTo(x * TILE_SIZE + TILE_SIZE / 2, y * TILE_SIZE + TILE_SIZE / 2);
+    for (const [prev, next] of mst) {
+      const { x, y } = prev.data;
+      const { x: x2, y: y2 } = next.data;
 
-    for (let i = 1; i < mst.length; ++i) {
-      const { x, y } = mst[i].data;
-      context$1.lineTo(x * TILE_SIZE + TILE_SIZE / 2, y * TILE_SIZE + TILE_SIZE / 2);
-      context$1.fillStyle = '#0fa';
-      context$1.fillText(i + 1, x * TILE_SIZE + TILE_SIZE, y * TILE_SIZE + TILE_SIZE);
-    }
-
-    context$1.strokeStyle = '#0af';
-    context$1.stroke();
-    context$1.closePath();
-
-    for (const node of mst) {
-      const { x, y } = node.data;
       context$1.beginPath();
-      context$1.arc(x * TILE_SIZE + TILE_SIZE / 2, y * TILE_SIZE + TILE_SIZE / 2, TILE_SIZE / 4, 0, 2 * Math.PI);
+      context$1.moveTo(x * TILE_SIZE + TILE_SIZE / 2, y * TILE_SIZE + TILE_SIZE / 2);
+      context$1.lineTo(x2 * TILE_SIZE + TILE_SIZE / 2, y2 * TILE_SIZE + TILE_SIZE / 2);
       context$1.closePath();
-      context$1.fillStyle = '#fa0';
-      context$1.fill();
+      context$1.strokeStyle = '#0af';
+      context$1.stroke();
     }
     // @endif
   }

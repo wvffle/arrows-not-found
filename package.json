@@ -16,17 +16,20 @@
     "chokidar": "^3.4.2",
     "clean-css": "^4.2.3",
     "esbuild": "^0.6.22",
+    "p-debounce": "^2.1.0",
     "preprocess": "^3.2.0",
     "pug": "^3.0.0",
     "rollup": "^2.25.0",
     "stylus": "^0.54.8",
     "terser": "^5.0.0",
     "tiny-lr": "^1.1.1",
+    "tmx-tiledmap": "^1.2.1",
     "yazl": "^2.5.1"
   },
   "dependencies": {
     "delaunator": "^4.0.1",
     "fantasy-map-noise": "^0.0.2",
-    "kontra": "^7.0.0"
+    "kontra": "^7.0.0",
+    "math-ds": "^1.2.1"
   }
 }

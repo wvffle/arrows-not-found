@@ -1,4 +1,5 @@
 import pug from 'pug'
+import debounce from 'p-debounce'
 import { promises as fs } from 'fs'
 
 const read = async file => {
@@ -10,7 +11,7 @@ const read = async file => {
   }
 }
 
-export default async (PRODUCTION) => {
+export default debounce(async (PRODUCTION) => {
   const [css, js] = await Promise.all([
     read(`public/main.css`),
     read(`public/main.js`),
@@ -25,4 +26,4 @@ export default async (PRODUCTION) => {
   })
 
   return fs.writeFile(`public/index.html`, html)
-}
+}, 500)

@@ -6,6 +6,8 @@ import javascript from './transformer/javascript.mjs'
 import pug from './transformer/pug.mjs'
 import stylus from './transformer/stylus.mjs'
 import zip from './transformer/zip.mjs'
+import tiled from './transformer/tiled.mjs'
+import copy from './transformer/copy.mjs'
 
 const PRODUCTION = process.env.NODE_ENV === 'production'
 
@@ -25,7 +27,8 @@ if (!PRODUCTION) {
     res.end()
   })
 
-  for (const file of ['main.css', 'main.js']) {
+  // NOTE: Added the tileset png image
+  for (const file of ['main.css', 'main.js', 'colored_tilemap_packed.png']) {
     server.on(`GET /public/${file}`, async (req, res) => {
       await sendFile(res, `public/${file}`)
       res.end()
@@ -63,6 +66,17 @@ if (!PRODUCTION) {
 
           case '.styl':
             await stylus(PRODUCTION)
+            console.log('@', path)
+            break
+
+          case '.tmx':
+            await tiled(PRODUCTION, path)
+            console.log('@', path)
+            break
+
+          case '.png':
+          case '.jpg':
+            await copy(PRODUCTION, path, 'public' + path.slice(path.lastIndexOf('/')))
             console.log('@', path)
             break
         }

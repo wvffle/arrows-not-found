@@ -19,26 +19,6 @@
 let callbacks = {};
 
 /**
- * There are currently only three lifecycle events:
- * - `init` - Emitted after `konta.init()` is called.
- * - `tick` - Emitted every frame of [GameLoop](api/gameLoop) before the loops `update()` and `render()` functions are called.
- * - `assetLoaded` - Emitted after an asset has fully loaded using the asset loader. The callback function is passed the asset and the url of the asset as parameters.
- * @sectionName Lifecycle Events
- */
-
-/**
- * Register a callback for an event to be called whenever the event is emitted. The callback will be passed all arguments used in the `emit` call.
- * @function on
- *
- * @param {String} event - Name of the event.
- * @param {Function} callback - Function that will be called when the event is emitted.
- */
-function on(event, callback) {
-  callbacks[event] = callbacks[event] || [];
-  callbacks[event].push(callback);
-}
-
-/**
  * Call all callback functions for the event. All arguments will be passed to the callback functions.
  * @function emit
  *
@@ -1804,344 +1784,6 @@ factory$4.prototype = Text.prototype;
 factory$4.class = Text;
 
 /**
- * A simple pointer API. You can use it move the main sprite or respond to a pointer event. Works with both mouse and touch events.
- *
- * Pointer events can be added on a global level or on individual sprites or objects. Before an object can receive pointer events, you must tell the pointer which objects to track and the object must haven been rendered to the canvas using `object.render()`.
- *
- * After an object is tracked and rendered, you can assign it an `onDown()`, `onUp()`, `onOver()`, or `onOut()` functions which will be called whenever a pointer down, up, over, or out event happens on the object.
- *
- * ```js
- * import { initPointer, track, Sprite } from 'kontra';
- *
- * // this function must be called first before pointer
- * // functions will work
- * initPointer();
- *
- * let sprite = Sprite({
- *   onDown: function() {
- *     // handle on down events on the sprite
- *   },
- *   onUp: function() {
- *     // handle on up events on the sprite
- *   },
- *   onOver: function() {
- *     // handle on over events on the sprite
- *   },
- *   onOut: function() {
- *     // handle on out events on the sprite
- *   }
- * });
- *
- * track(sprite);
- * sprite.render();
- * ```
- *
- * By default, the pointer is treated as a circle and will check for collisions against objects assuming they are rectangular (have a width and height property).
- *
- * If you need to perform a different type of collision detection, assign the object a `collidesWithPointer()` function and it will be called instead. The function is passed the pointer object. Use this function to determine how the pointer circle should collide with the object.
- *
- * ```js
- * import { Sprite } from 'kontra';
-
- * let sprite = Srite({
- *   x: 10,
- *   y: 10,
- *   radius: 10
- *   collidesWithPointer: function(pointer) {
- *     // perform a circle v circle collision test
- *     let dx = pointer.x - this.x;
- *     let dy = pointer.y - this.y;
- *     return Math.sqrt(dx * dx + dy * dy) < this.radius;
- *   }
- * });
- * ```
- * @sectionName Pointer
- */
-
-// save each object as they are rendered to determine which object
-// is on top when multiple objects are the target of an event.
-// we'll always use the last frame's object order so we know
-// the finalized order of all objects, otherwise an object could ask
-// if it's being hovered when it's rendered first even if other objects
-// would block it later in the render order
-let pointers = new WeakMap();
-let callbacks$1 = {};
-let pressedButtons = {};
-
-/**
- * Below is a list of buttons that you can use.
- *
- * - left, middle, right
- * @sectionName Available Buttons
- */
-let buttonMap = {
-  0: 'left',
-  1: 'middle',
-  2: 'right'
-};
-
-/**
- * Detection collision between a rectangle and a circlevt.
- * @see https://yal.cc/rectangle-circle-intersection-test/
- *
- * @param {Object} object - Object to check collision against.
- */
-function circleRectCollision(object, pointer) {
-  let { x, y, width, height } = getWorldRect(object);
-
-  let dx = pointer.x - Math.max(x, Math.min(pointer.x, x + width));
-  let dy = pointer.y - Math.max(y, Math.min(pointer.y, y + height));
-  return (dx * dx + dy * dy) < (pointer.radius * pointer.radius);
-}
-
-/**
- * Get the first on top object that the pointer collides with.
- *
- * @param {Object} pointer - The pointer object
- *
- * @returns {Object} First object to collide with the pointer.
- */
-function getCurrentObject(pointer) {
-
-  // if pointer events are required on the very first frame or
-  // without a game loop, use the current frame
-  let renderedObjects = pointer._lf.length ?
-    pointer._lf :
-    pointer._cf;
-
-  for (let i = renderedObjects.length - 1; i >= 0; i--) {
-    let object = renderedObjects[i];
-    let collides = object.collidesWithPointer ?
-      object.collidesWithPointer(pointer) :
-      circleRectCollision(object, pointer);
-
-    if (collides) {
-      return object;
-    }
-  }
-}
-
-/**
- * Execute the onDown callback for an object.
- *
- * @param {MouseEvent|TouchEvent} evt
- */
-function pointerDownHandler(evt) {
-
-  // touchstart should be treated like a left mouse button
-  let button = evt.button !== undefined ? buttonMap[evt.button] : 'left';
-  pressedButtons[button] = true;
-  pointerHandler(evt, 'onDown');
-}
-
-/**
- * Execute the onUp callback for an object.
- *
- * @param {MouseEvent|TouchEvent} evt
- */
-function pointerUpHandler(evt) {
-  let button = evt.button !== undefined ? buttonMap[evt.button] : 'left';
-  pressedButtons[button] = false;
-  pointerHandler(evt, 'onUp');
-}
-
-/**
- * Track the position of the mousevt.
- *
- * @param {MouseEvent|TouchEvent} evt
- */
-function mouseMoveHandler(evt) {
-  pointerHandler(evt, 'onOver');
-}
-
-/**
- * Reset pressed buttons.
- *
- * @param {MouseEvent|TouchEvent} evt
- */
-function blurEventHandler(evt) {
-  let pointer = pointers.get(evt.target);
-  pointer._oo = null;
-  pressedButtons = {};
-}
-
-/**
- * Find the first object for the event and execute it's callback function
- *
- * @param {MouseEvent|TouchEvent} evt
- * @param {string} eventName - Which event was called.
- */
-function pointerHandler(evt, eventName) {
-  evt.preventDefault();
-
-  let canvas = evt.target;
-  let pointer = pointers.get(canvas);
-
-  let ratio = canvas.height / canvas.offsetHeight;
-  let rect = canvas.getBoundingClientRect();
-
-  let isTouchEvent = ['touchstart', 'touchmove', 'touchend'].indexOf(evt.type) !== -1;
-
-  if (isTouchEvent) {
-    // Update pointer.touches
-    pointer.touches = {};
-    for (var i = 0; i < evt.touches.length; i++) {
-      pointer.touches[evt.touches[i].identifier] = {
-        id: evt.touches[i].identifier,
-        x: (evt.touches[i].clientX - rect.left) * ratio,
-        y: (evt.touches[i].clientY - rect.top) * ratio,
-        changed: false
-      };
-    }
-    // Handle all touches
-    for (var i = evt.changedTouches.length; i--;) {
-      const id = evt.changedTouches[i].identifier;
-      if (typeof pointer.touches[id] !== "undefined") {
-        pointer.touches[id].changed = true;
-      }
-
-      let clientX = evt.changedTouches[i].clientX;
-      let clientY = evt.changedTouches[i].clientY;
-      pointer.x = (clientX - rect.left) * ratio;
-      pointer.y = (clientY - rect.top) * ratio;
-
-      // Trigger events
-      let object = getCurrentObject(pointer);
-      if (object && object[eventName]) {
-        object[eventName](evt);
-      }
-
-      if (callbacks$1[eventName]) {
-        callbacks$1[eventName](evt, object);
-      }
-    }
-  } else {
-    pointer.x = (evt.clientX - rect.left) * ratio;
-    pointer.y = (evt.clientY - rect.top) * ratio;
-
-    let object = getCurrentObject(pointer);
-    if (object && object[eventName]) {
-      object[eventName](evt);
-    }
-
-    if (callbacks$1[eventName]) {
-      callbacks$1[eventName](evt, object);
-    }
-
-    // handle onOut events
-    if (eventName == 'onOver') {
-      if (object != pointer._oo && pointer._oo && pointer._oo.onOut) {
-        pointer._oo.onOut(evt);
-      }
-
-      pointer._oo = object;
-    }
-  }
-}
-
-/**
- * Initialize pointer event listeners. This function must be called before using other pointer functions.
- *
- * If you need to use multiple canvas, you'll have to initialize the pointer for each one individually as each canvas maintains its own pointer object.
- * @function initPointer
- *
- * @param {HTMLCanvasElement} [canvas] - The canvas that event listeners will be attached to. Defaults to [core.getCanvas()](api/core#getCanvas).
- *
- * @returns {{x: Number, y: Number, radius: Number, canvas: HTMLCanvasElement, touches: Object}} The pointer object for the canvas.
- */
-function initPointer(canvas = getCanvas()) {
-  let pointer = pointers.get(canvas);
-  if (!pointer) {
-    pointer = {
-      x: 0,
-      y: 0,
-      radius: 5, // arbitrary size
-      touches: {},
-      canvas,
-
-      // cf = current frame, lf = last frame, o = objects,
-      // oo = over object
-      _cf: [],
-      _lf: [],
-      _o: [],
-      _oo: null
-    };
-    pointers.set(canvas, pointer);
-  }
-
-  // if this function is called multiple times, the same event
-  // won't be added multiple times
-  // @see https://stackoverflow.com/questions/28056716/check-if-an-element-has-event-listener-on-it-no-jquery/41137585#41137585
-  canvas.addEventListener('mousedown', pointerDownHandler);
-  canvas.addEventListener('touchstart', pointerDownHandler);
-  canvas.addEventListener('mouseup', pointerUpHandler);
-  canvas.addEventListener('touchend', pointerUpHandler);
-  canvas.addEventListener('touchcancel', pointerUpHandler);
-  canvas.addEventListener('blur', blurEventHandler);
-  canvas.addEventListener('mousemove', mouseMoveHandler);
-  canvas.addEventListener('touchmove', mouseMoveHandler);
-
-  // however, the tick event should only be registered once
-  // otherwise it completely destroys pointer events
-  if (!pointer._t) {
-    pointer._t = true;
-
-    // reset object render order on every new frame
-    on('tick', () => {
-      pointer._lf.length = 0;
-
-      pointer._cf.map(object => {
-        pointer._lf.push(object);
-      });
-
-      pointer._cf.length = 0;
-    });
-  }
-
-  return pointer;
-}
-
-/**
- * Begin tracking pointer events for a set of objects. Takes a single object or an array of objects.
- *
- * ```js
- * import { initPointer, track } from 'kontra';
- *
- * initPointer();
- *
- * track(obj);
- * track([obj1, obj2]);
- * ```
- * @function track
- *
- * @param {...Object[]} objects - Objects to track.
- */
-function track(...objects) {
-  objects.map(object => {
-    let canvas = object.context ? object.context.canvas : getCanvas();
-    let pointer = pointers.get(canvas);
-
-    // @ifdef DEBUG
-    if (!pointer) {
-      throw new ReferenceError('Pointer events not initialized for the objects canvas');
-    }    // @endif
-
-    // override the objects render function to keep track of render
-    // order
-    if (!object._r) {
-      object._r = object.render;
-
-      object.render = function() {
-        pointer._cf.push(this);
-        this._r();
-      };
-
-      pointer._o.push(object);
-    }
-  });
-}
-
-/**
  * Clear the canvas.
  */
 function clear(context) {
@@ -2314,877 +1956,2292 @@ function GameLoop({
   };
 
   return loop;
-}function Grad(x, y, z) {
-    this.x = x;
-    this.y = y;
-    this.z = z;
 }
-Grad.prototype.dot2 = function(x, y) {
-    return this.x * x + this.y * y;
+
+/**
+ * A minimalistic keyboard API. You can use it move the main sprite or respond to a key press.
+ *
+ * ```js
+ * import { initKeys, keyPressed } from 'kontra';
+ *
+ * // this function must be called first before keyboard
+ * // functions will work
+ * initKeys();
+ *
+ * function update() {
+ *   if (keyPressed('left')) {
+ *     // move left
+ *   }
+ * }
+ * ```
+ * @sectionName Keyboard
+ */
+
+/**
+ * Below is a list of keys that are provided by default. If you need to extend this list, you can use the [keyMap](api/keyboard#keyMap) property.
+ *
+ * - a-z
+ * - 0-9
+ * - enter, esc, space, left, up, right, down
+ * @sectionName Available Keys
+ */
+
+let callbacks$2 = {};
+let pressedKeys = {};
+
+/**
+ * A map of keycodes to key names. Add to this object to expand the list of [available keys](api/keyboard#available-keys).
+ *
+ * ```js
+ * import { keyMap, bindKeys } from 'kontra';
+ *
+ * keyMap[34] = 'pageDown';
+ *
+ * bindKeys('pageDown', function(e) {
+ *   // handle pageDown key
+ * });
+ * ```
+ * @property {{[key in (String|Number)]: string}} keyMap
+ */
+let keyMap = {
+  // named keys
+  'Enter': 'enter',
+  'Escape': 'esc',
+  'Space': 'space',
+  'ArrowLeft': 'left',
+  'ArrowUp': 'up',
+  'ArrowRight': 'right',
+  'ArrowDown': 'down'
 };
 
-Grad.prototype.dot3 = function(x, y, z) {
-    return this.x * x + this.y * y + this.z * z;
-};var grad3 = [new Grad(1, 1, 0), new Grad(-1, 1, 0), new Grad(1, -1, 0), new Grad(-1, -1, 0),
-    new Grad(1, 0, 1), new Grad(-1, 0, 1), new Grad(1, 0, -1), new Grad(-1, 0, -1),
-    new Grad(0, 1, 1), new Grad(0, -1, 1), new Grad(0, 1, -1), new Grad(0, -1, -1)];
-
-var p = [151, 160, 137, 91, 90, 15,
-    131, 13, 201, 95, 96, 53, 194, 233, 7, 225, 140, 36, 103, 30, 69, 142, 8, 99, 37, 240, 21, 10, 23,
-    190, 6, 148, 247, 120, 234, 75, 0, 26, 197, 62, 94, 252, 219, 203, 117, 35, 11, 32, 57, 177, 33,
-    88, 237, 149, 56, 87, 174, 20, 125, 136, 171, 168, 68, 175, 74, 165, 71, 134, 139, 48, 27, 166,
-    77, 146, 158, 231, 83, 111, 229, 122, 60, 211, 133, 230, 220, 105, 92, 41, 55, 46, 245, 40, 244,
-    102, 143, 54, 65, 25, 63, 161, 1, 216, 80, 73, 209, 76, 132, 187, 208, 89, 18, 169, 200, 196,
-    135, 130, 116, 188, 159, 86, 164, 100, 109, 198, 173, 186, 3, 64, 52, 217, 226, 250, 124, 123,
-    5, 202, 38, 147, 118, 126, 255, 82, 85, 212, 207, 206, 59, 227, 47, 16, 58, 17, 182, 189, 28, 42,
-    223, 183, 170, 213, 119, 248, 152, 2, 44, 154, 163, 70, 221, 153, 101, 155, 167, 43, 172, 9,
-    129, 22, 39, 253, 19, 98, 108, 110, 79, 113, 224, 232, 178, 185, 112, 104, 218, 246, 97, 228,
-    251, 34, 242, 193, 238, 210, 144, 12, 191, 179, 162, 241, 81, 51, 145, 235, 249, 14, 239, 107,
-    49, 192, 214, 31, 181, 199, 106, 157, 184, 84, 204, 176, 115, 121, 50, 45, 127, 4, 150, 254,
-    138, 236, 205, 93, 222, 114, 67, 29, 24, 72, 243, 141, 128, 195, 78, 66, 215, 61, 156, 180];
-// To remove the need for index wrapping, double the permutation table length
-var perm = new Array(512);
-var gradP = new Array(512);
-
-// This isn't a very good seeding function, but it works ok. It supports 2^16
-// different seed values. Write something better if you need more seeds.
-function seed(seed) {
-    if(seed > 0 && seed < 1){
-        // Scale the seed out
-        seed *= 65536;
-    }
-
-    seed = Math.floor(seed);
-    if(seed < 256){
-        seed |= seed << 8;
-    }
-
-    for(var i = 0; i < 256; i++){
-        var v;
-        if(i & 1){
-            v = p[i] ^ (seed & 255);
-        }
-        else {
-            v = p[i] ^ ((seed >> 8) & 255);
-        }
-
-        perm[i] = perm[i + 256] = v;
-        gradP[i] = gradP[i + 256] = grad3[v % 12];
-    }
-}
-
-seed(0);// 2D Perlin Noise
-function fade(t) {
-    return t * t * t * (t * (t * 6 - 15) + 10);
-}
-
-function lerp(a, b, t) {
-    return ((1 - t) * a + t * b);
-}
-
-function perlin2(x, y) {
-    // Find unit grid cell containing point
-    var X = Math.floor(x);
-    var Y = Math.floor(y);
-    // Get relative xy coordinates of point within that cell
-    x = x - X;
-    y = y - Y;
-    // Wrap the integer cells at 255 (smaller integer period can be introduced here)
-    X = X & 255;
-    Y = Y & 255;
-
-    // Calculate noise contributions from each of the four corners
-    var n00 = gradP[X + perm[Y]].dot2(x, y);
-    var n01 = gradP[X + perm[Y + 1]].dot2(x, y - 1);
-    var n10 = gradP[X + 1 + perm[Y]].dot2(x - 1, y);
-    var n11 = gradP[X + 1 + perm[Y + 1]].dot2(x - 1, y - 1);
-
-    // Compute the fade curve value for x
-    var u = fade(x);
-
-    // Interpolate the four results
-    return lerp(
-        lerp(n00, n10, u),
-        lerp(n01, n11, u),
-        fade(y));
-}var author = "Kasper Seweryn <github@wvffle.net>";const EPSILON = Math.pow(2, -52);
-const EDGE_STACK = new Uint32Array(512);
-
-class Delaunator {
-
-    static from(points, getX = defaultGetX, getY = defaultGetY) {
-        const n = points.length;
-        const coords = new Float64Array(n * 2);
-
-        for (let i = 0; i < n; i++) {
-            const p = points[i];
-            coords[2 * i] = getX(p);
-            coords[2 * i + 1] = getY(p);
-        }
-
-        return new Delaunator(coords);
-    }
-
-    constructor(coords) {
-        const n = coords.length >> 1;
-        if (n > 0 && typeof coords[0] !== 'number') throw new Error('Expected coords to contain numbers.');
-
-        this.coords = coords;
-
-        // arrays that will store the triangulation graph
-        const maxTriangles = Math.max(2 * n - 5, 0);
-        this._triangles = new Uint32Array(maxTriangles * 3);
-        this._halfedges = new Int32Array(maxTriangles * 3);
-
-        // temporary arrays for tracking the edges of the advancing convex hull
-        this._hashSize = Math.ceil(Math.sqrt(n));
-        this._hullPrev = new Uint32Array(n); // edge to prev edge
-        this._hullNext = new Uint32Array(n); // edge to next edge
-        this._hullTri = new Uint32Array(n); // edge to adjacent triangle
-        this._hullHash = new Int32Array(this._hashSize).fill(-1); // angular edge hash
-
-        // temporary arrays for sorting points
-        this._ids = new Uint32Array(n);
-        this._dists = new Float64Array(n);
-
-        this.update();
-    }
-
-    update() {
-        const {coords, _hullPrev: hullPrev, _hullNext: hullNext, _hullTri: hullTri, _hullHash: hullHash} =  this;
-        const n = coords.length >> 1;
-
-        // populate an array of point indices; calculate input data bbox
-        let minX = Infinity;
-        let minY = Infinity;
-        let maxX = -Infinity;
-        let maxY = -Infinity;
-
-        for (let i = 0; i < n; i++) {
-            const x = coords[2 * i];
-            const y = coords[2 * i + 1];
-            if (x < minX) minX = x;
-            if (y < minY) minY = y;
-            if (x > maxX) maxX = x;
-            if (y > maxY) maxY = y;
-            this._ids[i] = i;
-        }
-        const cx = (minX + maxX) / 2;
-        const cy = (minY + maxY) / 2;
-
-        let minDist = Infinity;
-        let i0, i1, i2;
-
-        // pick a seed point close to the center
-        for (let i = 0; i < n; i++) {
-            const d = dist(cx, cy, coords[2 * i], coords[2 * i + 1]);
-            if (d < minDist) {
-                i0 = i;
-                minDist = d;
-            }
-        }
-        const i0x = coords[2 * i0];
-        const i0y = coords[2 * i0 + 1];
-
-        minDist = Infinity;
-
-        // find the point closest to the seed
-        for (let i = 0; i < n; i++) {
-            if (i === i0) continue;
-            const d = dist(i0x, i0y, coords[2 * i], coords[2 * i + 1]);
-            if (d < minDist && d > 0) {
-                i1 = i;
-                minDist = d;
-            }
-        }
-        let i1x = coords[2 * i1];
-        let i1y = coords[2 * i1 + 1];
-
-        let minRadius = Infinity;
-
-        // find the third point which forms the smallest circumcircle with the first two
-        for (let i = 0; i < n; i++) {
-            if (i === i0 || i === i1) continue;
-            const r = circumradius(i0x, i0y, i1x, i1y, coords[2 * i], coords[2 * i + 1]);
-            if (r < minRadius) {
-                i2 = i;
-                minRadius = r;
-            }
-        }
-        let i2x = coords[2 * i2];
-        let i2y = coords[2 * i2 + 1];
-
-        if (minRadius === Infinity) {
-            // order collinear points by dx (or dy if all x are identical)
-            // and return the list as a hull
-            for (let i = 0; i < n; i++) {
-                this._dists[i] = (coords[2 * i] - coords[0]) || (coords[2 * i + 1] - coords[1]);
-            }
-            quicksort(this._ids, this._dists, 0, n - 1);
-            const hull = new Uint32Array(n);
-            let j = 0;
-            for (let i = 0, d0 = -Infinity; i < n; i++) {
-                const id = this._ids[i];
-                if (this._dists[id] > d0) {
-                    hull[j++] = id;
-                    d0 = this._dists[id];
-                }
-            }
-            this.hull = hull.subarray(0, j);
-            this.triangles = new Uint32Array(0);
-            this.halfedges = new Uint32Array(0);
-            return;
-        }
-
-        // swap the order of the seed points for counter-clockwise orientation
-        if (orient(i0x, i0y, i1x, i1y, i2x, i2y)) {
-            const i = i1;
-            const x = i1x;
-            const y = i1y;
-            i1 = i2;
-            i1x = i2x;
-            i1y = i2y;
-            i2 = i;
-            i2x = x;
-            i2y = y;
-        }
-
-        const center = circumcenter(i0x, i0y, i1x, i1y, i2x, i2y);
-        this._cx = center.x;
-        this._cy = center.y;
-
-        for (let i = 0; i < n; i++) {
-            this._dists[i] = dist(coords[2 * i], coords[2 * i + 1], center.x, center.y);
-        }
-
-        // sort the points by distance from the seed triangle circumcenter
-        quicksort(this._ids, this._dists, 0, n - 1);
-
-        // set up the seed triangle as the starting hull
-        this._hullStart = i0;
-        let hullSize = 3;
-
-        hullNext[i0] = hullPrev[i2] = i1;
-        hullNext[i1] = hullPrev[i0] = i2;
-        hullNext[i2] = hullPrev[i1] = i0;
-
-        hullTri[i0] = 0;
-        hullTri[i1] = 1;
-        hullTri[i2] = 2;
-
-        hullHash.fill(-1);
-        hullHash[this._hashKey(i0x, i0y)] = i0;
-        hullHash[this._hashKey(i1x, i1y)] = i1;
-        hullHash[this._hashKey(i2x, i2y)] = i2;
-
-        this.trianglesLen = 0;
-        this._addTriangle(i0, i1, i2, -1, -1, -1);
-
-        for (let k = 0, xp, yp; k < this._ids.length; k++) {
-            const i = this._ids[k];
-            const x = coords[2 * i];
-            const y = coords[2 * i + 1];
-
-            // skip near-duplicate points
-            if (k > 0 && Math.abs(x - xp) <= EPSILON && Math.abs(y - yp) <= EPSILON) continue;
-            xp = x;
-            yp = y;
-
-            // skip seed triangle points
-            if (i === i0 || i === i1 || i === i2) continue;
-
-            // find a visible edge on the convex hull using edge hash
-            let start = 0;
-            for (let j = 0, key = this._hashKey(x, y); j < this._hashSize; j++) {
-                start = hullHash[(key + j) % this._hashSize];
-                if (start !== -1 && start !== hullNext[start]) break;
-            }
-
-            start = hullPrev[start];
-            let e = start, q;
-            while (q = hullNext[e], !orient(x, y, coords[2 * e], coords[2 * e + 1], coords[2 * q], coords[2 * q + 1])) {
-                e = q;
-                if (e === start) {
-                    e = -1;
-                    break;
-                }
-            }
-            if (e === -1) continue; // likely a near-duplicate point; skip it
-
-            // add the first triangle from the point
-            let t = this._addTriangle(e, i, hullNext[e], -1, -1, hullTri[e]);
-
-            // recursively flip triangles from the point until they satisfy the Delaunay condition
-            hullTri[i] = this._legalize(t + 2);
-            hullTri[e] = t; // keep track of boundary triangles on the hull
-            hullSize++;
-
-            // walk forward through the hull, adding more triangles and flipping recursively
-            let n = hullNext[e];
-            while (q = hullNext[n], orient(x, y, coords[2 * n], coords[2 * n + 1], coords[2 * q], coords[2 * q + 1])) {
-                t = this._addTriangle(n, i, q, hullTri[i], -1, hullTri[n]);
-                hullTri[i] = this._legalize(t + 2);
-                hullNext[n] = n; // mark as removed
-                hullSize--;
-                n = q;
-            }
-
-            // walk backward from the other side, adding more triangles and flipping
-            if (e === start) {
-                while (q = hullPrev[e], orient(x, y, coords[2 * q], coords[2 * q + 1], coords[2 * e], coords[2 * e + 1])) {
-                    t = this._addTriangle(q, i, e, -1, hullTri[e], hullTri[q]);
-                    this._legalize(t + 2);
-                    hullTri[q] = t;
-                    hullNext[e] = e; // mark as removed
-                    hullSize--;
-                    e = q;
-                }
-            }
-
-            // update the hull indices
-            this._hullStart = hullPrev[i] = e;
-            hullNext[e] = hullPrev[n] = i;
-            hullNext[i] = n;
-
-            // save the two new edges in the hash table
-            hullHash[this._hashKey(x, y)] = i;
-            hullHash[this._hashKey(coords[2 * e], coords[2 * e + 1])] = e;
-        }
-
-        this.hull = new Uint32Array(hullSize);
-        for (let i = 0, e = this._hullStart; i < hullSize; i++) {
-            this.hull[i] = e;
-            e = hullNext[e];
-        }
-
-        // trim typed triangle mesh arrays
-        this.triangles = this._triangles.subarray(0, this.trianglesLen);
-        this.halfedges = this._halfedges.subarray(0, this.trianglesLen);
-    }
-
-    _hashKey(x, y) {
-        return Math.floor(pseudoAngle(x - this._cx, y - this._cy) * this._hashSize) % this._hashSize;
-    }
-
-    _legalize(a) {
-        const {_triangles: triangles, _halfedges: halfedges, coords} = this;
-
-        let i = 0;
-        let ar = 0;
-
-        // recursion eliminated with a fixed-size stack
-        while (true) {
-            const b = halfedges[a];
-
-            /* if the pair of triangles doesn't satisfy the Delaunay condition
-             * (p1 is inside the circumcircle of [p0, pl, pr]), flip them,
-             * then do the same check/flip recursively for the new pair of triangles
-             *
-             *           pl                    pl
-             *          /||\                  /  \
-             *       al/ || \bl            al/    \a
-             *        /  ||  \              /      \
-             *       /  a||b  \    flip    /___ar___\
-             *     p0\   ||   /p1   =>   p0\---bl---/p1
-             *        \  ||  /              \      /
-             *       ar\ || /br             b\    /br
-             *          \||/                  \  /
-             *           pr                    pr
-             */
-            const a0 = a - a % 3;
-            ar = a0 + (a + 2) % 3;
-
-            if (b === -1) { // convex hull edge
-                if (i === 0) break;
-                a = EDGE_STACK[--i];
-                continue;
-            }
-
-            const b0 = b - b % 3;
-            const al = a0 + (a + 1) % 3;
-            const bl = b0 + (b + 2) % 3;
-
-            const p0 = triangles[ar];
-            const pr = triangles[a];
-            const pl = triangles[al];
-            const p1 = triangles[bl];
-
-            const illegal = inCircle(
-                coords[2 * p0], coords[2 * p0 + 1],
-                coords[2 * pr], coords[2 * pr + 1],
-                coords[2 * pl], coords[2 * pl + 1],
-                coords[2 * p1], coords[2 * p1 + 1]);
-
-            if (illegal) {
-                triangles[a] = p1;
-                triangles[b] = p0;
-
-                const hbl = halfedges[bl];
-
-                // edge swapped on the other side of the hull (rare); fix the halfedge reference
-                if (hbl === -1) {
-                    let e = this._hullStart;
-                    do {
-                        if (this._hullTri[e] === bl) {
-                            this._hullTri[e] = a;
-                            break;
-                        }
-                        e = this._hullPrev[e];
-                    } while (e !== this._hullStart);
-                }
-                this._link(a, hbl);
-                this._link(b, halfedges[ar]);
-                this._link(ar, bl);
-
-                const br = b0 + (b + 1) % 3;
-
-                // don't worry about hitting the cap: it can only happen on extremely degenerate input
-                if (i < EDGE_STACK.length) {
-                    EDGE_STACK[i++] = br;
-                }
-            } else {
-                if (i === 0) break;
-                a = EDGE_STACK[--i];
-            }
-        }
-
-        return ar;
-    }
-
-    _link(a, b) {
-        this._halfedges[a] = b;
-        if (b !== -1) this._halfedges[b] = a;
-    }
-
-    // add a new triangle given vertex indices and adjacent half-edge ids
-    _addTriangle(i0, i1, i2, a, b, c) {
-        const t = this.trianglesLen;
-
-        this._triangles[t] = i0;
-        this._triangles[t + 1] = i1;
-        this._triangles[t + 2] = i2;
-
-        this._link(t, a);
-        this._link(t + 1, b);
-        this._link(t + 2, c);
-
-        this.trianglesLen += 3;
-
-        return t;
-    }
-}
-
-// monotonically increases with real angle, but doesn't need expensive trigonometry
-function pseudoAngle(dx, dy) {
-    const p = dx / (Math.abs(dx) + Math.abs(dy));
-    return (dy > 0 ? 3 - p : 1 + p) / 4; // [0..1]
-}
-
-function dist(ax, ay, bx, by) {
-    const dx = ax - bx;
-    const dy = ay - by;
-    return dx * dx + dy * dy;
-}
-
-// return 2d orientation sign if we're confident in it through J. Shewchuk's error bound check
-function orientIfSure(px, py, rx, ry, qx, qy) {
-    const l = (ry - py) * (qx - px);
-    const r = (rx - px) * (qy - py);
-    return Math.abs(l - r) >= 3.3306690738754716e-16 * Math.abs(l + r) ? l - r : 0;
-}
-
-// a more robust orientation test that's stable in a given triangle (to fix robustness issues)
-function orient(rx, ry, qx, qy, px, py) {
-    const sign = orientIfSure(px, py, rx, ry, qx, qy) ||
-    orientIfSure(rx, ry, qx, qy, px, py) ||
-    orientIfSure(qx, qy, px, py, rx, ry);
-    return sign < 0;
-}
-
-function inCircle(ax, ay, bx, by, cx, cy, px, py) {
-    const dx = ax - px;
-    const dy = ay - py;
-    const ex = bx - px;
-    const ey = by - py;
-    const fx = cx - px;
-    const fy = cy - py;
-
-    const ap = dx * dx + dy * dy;
-    const bp = ex * ex + ey * ey;
-    const cp = fx * fx + fy * fy;
-
-    return dx * (ey * cp - bp * fy) -
-           dy * (ex * cp - bp * fx) +
-           ap * (ex * fy - ey * fx) < 0;
-}
-
-function circumradius(ax, ay, bx, by, cx, cy) {
-    const dx = bx - ax;
-    const dy = by - ay;
-    const ex = cx - ax;
-    const ey = cy - ay;
-
-    const bl = dx * dx + dy * dy;
-    const cl = ex * ex + ey * ey;
-    const d = 0.5 / (dx * ey - dy * ex);
-
-    const x = (ey * bl - dy * cl) * d;
-    const y = (dx * cl - ex * bl) * d;
-
-    return x * x + y * y;
-}
-
-function circumcenter(ax, ay, bx, by, cx, cy) {
-    const dx = bx - ax;
-    const dy = by - ay;
-    const ex = cx - ax;
-    const ey = cy - ay;
-
-    const bl = dx * dx + dy * dy;
-    const cl = ex * ex + ey * ey;
-    const d = 0.5 / (dx * ey - dy * ex);
-
-    const x = ax + (ey * bl - dy * cl) * d;
-    const y = ay + (dx * cl - ex * bl) * d;
-
-    return {x, y};
-}
-
-function quicksort(ids, dists, left, right) {
-    if (right - left <= 20) {
-        for (let i = left + 1; i <= right; i++) {
-            const temp = ids[i];
-            const tempDist = dists[temp];
-            let j = i - 1;
-            while (j >= left && dists[ids[j]] > tempDist) ids[j + 1] = ids[j--];
-            ids[j + 1] = temp;
-        }
-    } else {
-        const median = (left + right) >> 1;
-        let i = left + 1;
-        let j = right;
-        swap(ids, median, i);
-        if (dists[ids[left]] > dists[ids[right]]) swap(ids, left, right);
-        if (dists[ids[i]] > dists[ids[right]]) swap(ids, i, right);
-        if (dists[ids[left]] > dists[ids[i]]) swap(ids, left, i);
-
-        const temp = ids[i];
-        const tempDist = dists[temp];
-        while (true) {
-            do i++; while (dists[ids[i]] < tempDist);
-            do j--; while (dists[ids[j]] > tempDist);
-            if (j < i) break;
-            swap(ids, i, j);
-        }
-        ids[left + 1] = ids[j];
-        ids[j] = temp;
-
-        if (right - i + 1 >= j - left) {
-            quicksort(ids, dists, i, right);
-            quicksort(ids, dists, left, j - 1);
-        } else {
-            quicksort(ids, dists, left, j - 1);
-            quicksort(ids, dists, i, right);
-        }
-    }
-}
-
-function swap(arr, i, j) {
-    const tmp = arr[i];
-    arr[i] = arr[j];
-    arr[j] = tmp;
-}
-
-function defaultGetX(p) {
-    return p[0];
-}
-function defaultGetY(p) {
-    return p[1];
-}const { canvas, context: context$1 } = init('c');
-
-initPointer();
-
-const WIDTH = canvas.width = innerWidth;
-const HEIGHT = canvas.height = innerHeight;
-
-const credits = factory$4({
-  text: `js13k submission by ${author}`,
-  color: '#fff',
-  y: HEIGHT - 16,
-  x: 8
-});
-
-// Tile render
-const TILE_SIZE = 16;
-const NOISE_SCALE = 4;
-
-// World generation
-const TYPE_GROUND = 0;
-const TYPE_WALL = 1;
-
-// Room generation
-const ROOM_TRESHOLD = 4;
-
-const xTiles = WIDTH / TILE_SIZE + 1 ^ 0;
-const yTiles = HEIGHT / TILE_SIZE + 1 ^ 0;
-const xyTiles = xTiles * yTiles;
-
-const tiles = [];
-const map = [];
-
-class MapNode {
-  constructor (i, noise) {
-    this.pos = i;
-    
-    if (noise > .6) {
-      this.type = TYPE_GROUND;
-    } else {
-      this.type = TYPE_WALL;
-    }
-
-    this.noise = noise;
-  }
-
-  get neighbours () {
-    return [1, -1, xTiles, -xTiles]
-      .map(d => {
-        const ni = this.pos + d;
-        const y = this.pos / xTiles ^ 0;
-
-        if (d === -1 && ni % xTiles === xTiles - 1 || d === 1 && ni % xTiles === 0) {
-          return
-        }
-        
-        return map[ni]
-      })
-      .filter(i => i)
+/**
+ * Execute a function that corresponds to a keyboard key.
+ *
+ * @param {KeyboardEvent} evt
+ */
+function keydownEventHandler(evt) {
+  let key = keyMap[evt.code];
+  pressedKeys[key] = true;
+
+  if (callbacks$2[key]) {
+    callbacks$2[key](evt);
   }
 }
 
-for (let i = 0; i < xyTiles; ++i) {
-  const x = i % xTiles;
-  const y = i / xTiles ^ 0;
-  const noise = (perlin2(x / NOISE_SCALE, y / NOISE_SCALE) + 1) / 2;
-
-  const node = new MapNode(i, noise);
-  map.push(node);
-
-  const tile = new factory$3({
-    x: x * TILE_SIZE,
-    y: y * TILE_SIZE,
-    width: TILE_SIZE,
-    height: TILE_SIZE,
-    color: `#000`,
-    onUp () {
-      console.log(x, y, i);
-    }
-  });
-
-  tile.pos = i;
-  tiles.push(tile);
-  track(tile);
+/**
+ * Set the released key to not being pressed.
+ *
+ * @param {KeyboardEvent} evt
+ */
+function keyupEventHandler(evt) {
+  pressedKeys[ keyMap[evt.code] ] = false;
 }
 
+/**
+ * Reset pressed keys.
+ */
+function blurEventHandler$1() {
+  pressedKeys = {};
+}
 
-const bfs = (start, { enter, leave }) => {
-  const queue = [start];
-  const visited = new Set();
-  const prev = new Map();
+/**
+ * Initialize keyboard event listeners. This function must be called before using other keyboard functions.
+ * @function initKeys
+ */
+function initKeys() {
+  let i;
 
-  while (queue.length) {
-    const node = queue.shift();
-
-    if (visited.has(node)) {
-      continue
-    }
-
-    visited.add(node);
-
-    enter && enter(node, visited, prev.get(node));
-
-    for (const neighbour of node.neighbours) {
-      if (!visited.has(neighbour)) {
-        prev.set(neighbour, node);
-        queue.push(neighbour);
-      }
-    }
-
-    leave && leave(node, visited, prev.get(node));
+  // alpha keys
+  // @see https://stackoverflow.com/a/43095772/2124254
+  for (i = 0; i < 26; i++) {
+    // rollupjs considers this a side-effect (for now), so we'll do it in the
+    // initKeys function
+    keyMap[i + 65] = keyMap['Key' + String.fromCharCode(i + 65)] = String.fromCharCode(i + 97);
   }
-};
 
-// All ground tiles
-const groundNodes = map.filter(({ type }) => type === TYPE_GROUND);
-const groundIslands = [];
-const roomCenterPoints = [];
+  // numeric keys
+  for (i = 0; i < 10; i++) {
+    keyMap[48+i] = keyMap['Digit'+i] = ''+i;
+  }
 
-// Group islands
-while (groundNodes.length) {
-  const node = groundNodes.pop();
-  const isle = [];
+  window.addEventListener('keydown', keydownEventHandler);
+  window.addEventListener('keyup', keyupEventHandler);
+  window.addEventListener('blur', blurEventHandler$1);
+}
 
-  // Isle edge points
-  // t, r, b, l
-  const max = [Infinity, -1, -1, Infinity];
+/**
+ * Bind a set of keys that will call the callback function when they are pressed. Takes a single key or an array of keys. Is passed the original KeyboardEvent as a parameter.
+ *
+ * ```js
+ * import { initKeys, bindKeys } from 'kontra';
+ *
+ * initKeys();
+ *
+ * bindKeys('p', function(e) {
+ *   // pause the game
+ * });
+ * bindKeys(['enter', 'space'], function(e) {
+ *   e.preventDefault();
+ *   // fire gun
+ * });
+ * ```
+ * @function bindKeys
+ *
+ * @param {String|String[]} keys - Key or keys to bind.
+ * @param {(evt: KeyboardEvent) => void} callback - The function to be called when the key is pressed.
+ */
+function bindKeys(keys, callback) {
+  // smaller than doing `Array.isArray(keys) ? keys : [keys]`
+  [].concat(keys).map(key => callbacks$2[key] = callback);
+}
 
-  bfs(node, {
-    enter (node, visited) {
-      ~groundNodes.indexOf(node) && groundNodes.splice(groundNodes.indexOf(node), 1);
+/**
+ * A tile engine for managing and drawing tilesets.
+ *
+ * <figure>
+ *   <a href="assets/imgs/mapPack_tilesheet.png">
+ *     <img src="assets/imgs/mapPack_tilesheet.png" width="1088" height="768" alt="Tileset to create an overworld map in various seasons.">
+ *   </a>
+ *   <figcaption>Tileset image courtesy of <a href="https://kenney.nl/assets">Kenney</a>.</figcaption>
+ * </figure>
+ * @class TileEngine
+ *
+ * @param {Object} properties - Properties of the tile engine.
+ * @param {Number} properties.width - Width of the tile map (in number of tiles).
+ * @param {Number} properties.height - Height of the tile map (in number of tiles).
+ * @param {Number} properties.tilewidth - Width of a single tile (in pixels).
+ * @param {Number} properties.tileheight - Height of a single tile (in pixels).
+ * @param {CanvasRenderingContext2D} [properties.context] - The context the tile engine should draw to. Defaults to [core.getContext()](api/core#getContext)
+ *
+ * @param {Object[]} properties.tilesets - Array of tileset objects.
+ * @param {Number} properties.tilesetN.firstgid - First tile index of the tileset. The first tileset will have a firstgid of 1 as 0 represents an empty tile.
+ * @param {String|HTMLImageElement} properties.tilesetN.image - Relative path to the HTMLImageElement or an HTMLImageElement. If passing a relative path, the image file must have been [loaded](api/assets#load) first.
+ * @param {Number} [properties.tilesetN.margin=0] - The amount of whitespace between each tile (in pixels).
+ * @param {Number} [properties.tilesetN.tilewidth] - Width of the tileset (in pixels). Defaults to properties.tilewidth.
+ * @param {Number} [properties.tilesetN.tileheight] - Height of the tileset (in pixels). Defaults to properties.tileheight.
+ * @param {String} [properties.tilesetN.source] - Relative path to the source JSON file. The source JSON file must have been [loaded](api/assets#load) first.
+ * @param {Number} [properties.tilesetN.columns] - Number of columns in the tileset image.
+ *
+ * @param {Object[]} properties.layers - Array of layer objects.
+ * @param {String} properties.layerN.name - Unique name of the layer.
+ * @param {Number[]} properties.layerN.data - 1D array of tile indices.
+ * @param {Boolean} [properties.layerN.visible=true] - If the layer should be drawn or not.
+ * @param {Number} [properties.layerN.opacity=1] - Percent opacity of the layer.
+ */
 
-      const x = node.pos % xTiles;
-      const y = node.pos / xTiles ^ 0;
+/**
+ * @docs docs/api_docs/tileEngine.js
+ */
 
-      if (max[0] >= y) {
-        max[0] = y;
+function TileEngine(properties) {
+  let {
+    width,
+    height,
+    tilewidth,
+    tileheight,
+    context = getContext(),
+    tilesets,
+    layers
+  } = properties;
+
+  let mapwidth = width * tilewidth;
+  let mapheight = height * tileheight;
+
+  // create an off-screen canvas for pre-rendering the map
+  // @see http://jsperf.com/render-vs-prerender
+  let offscreenCanvas = document.createElement('canvas');
+  let offscreenContext = offscreenCanvas.getContext('2d');
+  offscreenCanvas.width = mapwidth;
+  offscreenCanvas.height = mapheight;
+
+  // map layer names to data
+  let layerMap = {};
+  let layerCanvases = {};
+
+  // objects added to tile engine to sync with the camera
+  let objects = [];
+
+  /**
+   * The width of tile map (in tiles).
+   * @memberof TileEngine
+   * @property {Number} width
+   */
+
+  /**
+   * The height of tile map (in tiles).
+   * @memberof TileEngine
+   * @property {Number} height
+   */
+
+  /**
+   * The width a tile (in pixels).
+   * @memberof TileEngine
+   * @property {Number} tilewidth
+   */
+
+  /**
+   * The height of a tile (in pixels).
+   * @memberof TileEngine
+   * @property {Number} tileheight
+   */
+
+  /**
+   * Array of all layers of the tile engine.
+   * @memberof TileEngine
+   * @property {Object[]} layers
+   */
+
+  /**
+   * Array of all tilesets of the tile engine.
+   * @memberof TileEngine
+   * @property {Object[]} tilesets
+   */
+
+  let tileEngine = Object.assign({
+
+    /**
+     * The context the tile engine will draw to.
+     * @memberof TileEngine
+     * @property {CanvasRenderingContext2D} context
+     */
+    context: context,
+
+    /**
+     * The width of the tile map (in pixels).
+     * @memberof TileEngine
+     * @property {Number} mapwidth
+     */
+    mapwidth: mapwidth,
+
+    /**
+     * The height of the tile map (in pixels).
+     * @memberof TileEngine
+     * @property {Number} mapheight
+     */
+    mapheight: mapheight,
+    _sx: 0,
+    _sy: 0,
+
+    // d = dirty
+    _d: false,
+
+    /**
+     * X coordinate of the tile map camera.
+     * @memberof TileEngine
+     * @property {Number} sx
+     */
+    get sx() {
+      return this._sx;
+    },
+
+    /**
+     * Y coordinate of the tile map camera.
+     * @memberof TileEngine
+     * @property {Number} sy
+     */
+    get sy() {
+      return this._sy;
+    },
+
+    // when clipping an image, sx and sy must within the image region, otherwise
+    // Firefox and Safari won't draw it.
+    // @see http://stackoverflow.com/questions/19338032/canvas-indexsizeerror-index-or-size-is-negative-or-greater-than-the-allowed-a
+    set sx(value) {
+      this._sx = clamp(0, mapwidth - getCanvas().width, value);
+      objects.forEach(obj => obj.sx = this._sx);
+    },
+
+    set sy(value) {
+      this._sy = clamp(0, mapheight - getCanvas().height, value);
+      objects.forEach(obj => obj.sy = this._sy);
+    },
+
+    /**
+     * Render all visible layers.
+     * @memberof TileEngine
+     * @function render
+     */
+    render() {
+      if (this._d) {
+        this._d = false;
+        this._p();
       }
 
-      if (max[1] < x) {
-        max[1] = x;
+      render(offscreenCanvas);
+    },
+
+    /**
+     * Render a specific layer by name.
+     * @memberof TileEngine
+     * @function renderLayer
+     *
+     * @param {String} name - Name of the layer to render.
+     */
+    renderLayer(name) {
+      let canvas = layerCanvases[name];
+      let layer = layerMap[name];
+
+      if (!canvas) {
+        // cache the rendered layer so we can render it again without redrawing
+        // all tiles
+        canvas = document.createElement('canvas');
+        canvas.width = mapwidth;
+        canvas.height = mapheight;
+
+        layerCanvases[name] = canvas;
+        tileEngine._r(layer, canvas.getContext('2d'));
       }
 
-      if (max[2] < y) {
-        max[2] = y;
+      if (layer._d) {
+        layer._d = false;
+        canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+        tileEngine._r(layer, canvas.getContext('2d'));
       }
 
-      if (max[3] >= x) {
-        max[3] = x;
-      }
+      render(canvas);
+    },
 
-      for (const neighbour of node.neighbours) {
-        if (neighbour.type !== TYPE_GROUND) {
-          visited.add(neighbour);
+    /**
+     * Check if the object collides with the layer (shares a gird coordinate with any positive tile index in layers data). The object being checked must have the properties `x`, `y`, `width`, and `height` so that its position in the grid can be calculated. [Sprite](api/sprite) defines these properties for you.
+     *
+     * ```js
+     * import { TileEngine, Sprite } from 'kontra';
+     *
+     * let tileEngine = TileEngine({
+     *   tilewidth: 32,
+     *   tileheight: 32,
+     *   width: 4,
+     *   height: 4,
+     *   tilesets: [{
+     *     // ...
+     *   }],
+     *   layers: [{
+     *     name: 'collision',
+     *     data: [ 0,0,0,0,
+     *             0,1,4,0,
+     *             0,2,5,0,
+     *             0,0,0,0 ]
+     *   }]
+     * });
+     *
+     * let sprite = Sprite({
+     *   x: 50,
+     *   y: 20,
+     *   width: 5,
+     *   height: 5
+     * });
+     *
+     * tileEngine.layerCollidesWith('collision', sprite);  //=> false
+     *
+     * sprite.y = 28;
+     *
+     * tileEngine.layerCollidesWith('collision', sprite);  //=> true
+     * ```
+     * @memberof TileEngine
+     * @function layerCollidesWith
+     *
+     * @param {String} name - The name of the layer to check for collision.
+     * @param {Object} object - Object to check collision against.
+     *
+     * @returns {boolean} `true` if the object collides with a tile, `false` otherwise.
+     */
+    layerCollidesWith(name, object) {
+      let { x, y, width, height } = getWorldRect(object);
+
+      let row = getRow(y);
+      let col = getCol(x);
+      let endRow = getRow(y + height);
+      let endCol = getCol(x + width);
+
+      let layer = layerMap[name];
+
+      // check all tiles
+      for (let r = row; r <= endRow; r++) {
+        for (let c = col; c <= endCol; c++) {
+          if (layer.data[c + r * this.width]) {
+            return true;
+          }
         }
       }
-    }
-  });
 
-  const [t, r, b, l] = max;
-  const w = r - l + 1;
-  const h = b - t + 1;
+      return false;
+    },
 
-  for (let y = 0; y < h; ++y) {
-    for (let x = 0; x < w; ++x) {
-      const i = xTiles * (t + y) + l + x;
+    /**
+     * Get the tile at the specified layer using either x and y coordinates or row and column coordinates.
+     *
+     * ```js
+     * import { TileEngine } from 'kontra';
+     *
+     * let tileEngine = TileEngine({
+     *   tilewidth: 32,
+     *   tileheight: 32,
+     *   width: 4,
+     *   height: 4,
+     *   tilesets: [{
+     *     // ...
+     *   }],
+     *   layers: [{
+     *     name: 'collision',
+     *     data: [ 0,0,0,0,
+     *             0,1,4,0,
+     *             0,2,5,0,
+     *             0,0,0,0 ]
+     *   }]
+     * });
+     *
+     * tileEngine.tileAtLayer('collision', {x: 50, y: 50});  //=> 1
+     * tileEngine.tileAtLayer('collision', {row: 2, col: 1});  //=> 2
+     * ```
+     * @memberof TileEngine
+     * @function tileAtLayer
+     *
+     * @param {String} name - Name of the layer.
+     * @param {{x: Number, y: Number}|{row: Number, col: Number}} position - Position of the tile in either {x, y} or {row, col} coordinates.
+     *
+     * @returns {Number} The tile index. Will return `-1` if no layer exists by the provided name.
+     */
+    tileAtLayer(name, position) {
+      let row = position.row || getRow(position.y);
+      let col = position.col || getCol(position.x);
 
-      if (w <= ROOM_TRESHOLD || h <= ROOM_TRESHOLD) {
-        map[i].type = TYPE_WALL;
-        continue
-      } 
-
-      isle.push(map[i]);
-    }
-  }
-
-  if (!isle.length) {
-    continue
-  }
-
-  roomCenterPoints.push([
-    l + w / 2 ^ 0,
-    t + h / 2 ^ 0,
-    isle
-  ]);
-
-  groundIslands.push(isle);
-}
-
-for (const isle of groundIslands) {
-  for (const tile of isle) {
-    tile.type = TYPE_GROUND;
-  }
-}
-
-const { triangles } = Delaunator.from(roomCenterPoints);
-
-class Node {
-  constructor (data, neighbours = []) {
-    this.data = data;
-    this.neighboursSet = new Set(neighbours);
-  }
-
-  get neighbours () {
-    return [...this.neighboursSet]
-  }
-}
-
-const allNodes = new Map();
-let lastNode;
-
-for (let j = 0; j < triangles.length; j += 3) {
-  const v = [0, 1, 2].map(i => roomCenterPoints[triangles[j + i]]);
-
-  const triangle = []
-  ;[0, 1, 2].map(i => {
-    if (!allNodes.has(v[i])) {
-      allNodes.set(v[i], lastNode = new Node({
-        x: v[i][0],
-        y: v[i][1],
-        isle: v[i][2]
-      }));
-    }
-
-    triangle.push(allNodes.get(v[i]));
-  });
-
-  for (const node of triangle) {
-    triangle.map(n => {
-      if (n === node) return
-      node.neighboursSet.add(n);
-    });
-  }
-}
-
-const mst = [];
-bfs(lastNode, {
-  leave (node, _, prev) {
-    if (prev) {
-      mst.push([prev, node]);
-    }
-  }
-});
-
-console.log(mst[0]);
-
-const renderLoop = GameLoop({
-  update () {
-    for (const tile of tiles) {
-      const { noise, type } = map[tile.pos];
-
-      switch (type) {
-        case TYPE_GROUND:
-          tile.color = `hsla(0deg, 50%, 0%, 1)`;
-          break
-
-        default:
-          tile.color = `hsla(0deg, 30%, 10%, ${1 - noise})`;
-          break
+      if (layerMap[name]) {
+        return layerMap[name].data[col + row * tileEngine.width];
       }
 
-      tile.update();
-    }
-  },
+      return -1;
+    },
 
-  render () {
-    for (const tile of tiles) {
-      tile.render();
-    }
+    /**
+     * Set the tile at the specified layer using either x and y coordinates or row and column coordinates.
+     *
+     * ```js
+     * import { TileEngine } from 'kontra';
+     *
+     * let tileEngine = TileEngine({
+     *   tilewidth: 32,
+     *   tileheight: 32,
+     *   width: 4,
+     *   height: 4,
+     *   tilesets: [{
+     *     // ...
+     *   }],
+     *   layers: [{
+     *     name: 'collision',
+     *     data: [ 0,0,0,0,
+     *             0,1,4,0,
+     *             0,2,5,0,
+     *             0,0,0,0 ]
+     *   }]
+     * });
+     *
+     * tileEngine.setTileAtLayer('collision', {row: 2, col: 1}, 10);
+     * tileEngine.tileAtLayer('collision', {row: 2, col: 1});  //=> 10
+     * ```
+     * @memberof TileEngine
+     * @function setTileAtLayer
+     *
+     * @param {String} name - Name of the layer.
+     * @param {{x: Number, y: Number}|{row: Number, col: Number}} position - Position of the tile in either {x, y} or {row, col} coordinates.
+     * @param {Number} tile - Tile index to set.
+     */
+    setTileAtLayer(name, position, tile) {
+      let row = position.row || getRow(position.y);
+      let col = position.col || getCol(position.x);
 
-    credits.render();
+      if (layerMap[name]) {
+        this._d = true;
+        layerMap[name]._d = true;
+        layerMap[name].data[col + row * tileEngine.width] = tile;
+      }
+    },
+
+    /**
+    * Set the data at the specified layer.
+    * 
+    * ```js
+    * import { TileEngine } from 'kontra';
+    *
+    * let tileEngine = TileEngine({
+    *   tilewidth: 32,
+    *   tileheight: 32,
+    *   width: 2,
+    *   height: 2,
+    *   tilesets: [{
+    *     // ...
+    *   }],
+    *   layers: [{
+    *     name: 'collision',
+    *     data: [ 0,1,
+    *             2,3 ]
+    *   }]
+    * });
+    *
+    * tileEngine.setLayer('collision', [ 4,5,6,7]);
+    * tileEngine.tileAtLayer('collision', {row: 0, col: 0});  //=> 4
+    * tileEngine.tileAtLayer('collision', {row: 0, col: 1});  //=> 5
+    * tileEngine.tileAtLayer('collision', {row: 1, col: 0});  //=> 6
+    * tileEngine.tileAtLayer('collision', {row: 1, col: 1});  //=> 7
+    * ```
+    * 
+    * @memberof TileEngine
+    * @function setLayer
+    * 
+    * @param {String} name - Name of the layer.
+    * @param {Number[]} data - 1D array of tile indices.
+    */
+    setLayer(name, data) {
+      if (layerMap[name]) {
+        this._d = true;
+        layerMap[name]._d = true;
+        layerMap[name].data = data;
+      }
+    },
+
+    /**
+     * Add an object to the tile engine. The tile engine will set the objects camera position (`sx`, `sy`) to be in sync with the tile engine camera. [Sprite](api/sprite) uses this information to draw the sprite to the correct position on the canvas.
+     * @memberof TileEngine
+     * @function addObject
+     *
+     * @param {Object} object - Object to add to the tile engine.
+     */
+    addObject(object) {
+      objects.push(object);
+      object.sx = this._sx;
+      object.sy = this._sy;
+    },
+
+    /**
+     * Remove an object from the tile engine.
+     * @memberof TileEngine
+     * @function removeObject
+     *
+     * @param {Object} object - Object to remove from the tile engine.
+     */
+    removeObject(object) {
+      let index = objects.indexOf(object);
+      if (index !== -1) {
+        objects.splice(index, 1);
+        object.sx = object.sy = 0;
+      }
+    },
+
+    // expose for testing
+    _r: renderLayer,
+    _p: prerender,
 
     // @ifdef DEBUG
-    for (const [prev, next] of mst) {
-      const { x, y } = prev.data;
-      const { x: x2, y: y2 } = next.data;
-
-      context$1.beginPath();
-      context$1.moveTo(x * TILE_SIZE + TILE_SIZE / 2, y * TILE_SIZE + TILE_SIZE / 2);
-      context$1.lineTo(x2 * TILE_SIZE + TILE_SIZE / 2, y2 * TILE_SIZE + TILE_SIZE / 2);
-      context$1.closePath();
-      context$1.strokeStyle = '#0af';
-      context$1.stroke();
-    }
+    layerCanvases: layerCanvases,
+    layerMap: layerMap
     // @endif
+  }, properties);
+
+  // resolve linked files (source, image)
+  tileEngine.tilesets.map(tileset => {
+    // get the url of the Tiled JSON object (in this case, the properties object)
+    let url = (window.__k ? window.__k.dm.get(properties) : '') || window.location.href;
+
+    if (tileset.source) {
+      // @ifdef DEBUG
+      if (!window.__k) {
+        throw Error(`You must use "load" or "loadData" to resolve tileset.source`);
+      }
+      // @endif
+
+      let source = window.__k.d[window.__k.u(tileset.source, url)];
+
+      // @ifdef DEBUG
+      if (!source) {
+        throw Error(`You must load the tileset source "${tileset.source}" before loading the tileset`);
+      }
+      // @endif
+
+      Object.keys(source).map(key => {
+        tileset[key] = source[key];
+      });
+    }
+
+    if (''+tileset.image === tileset.image) {
+      // @ifdef DEBUG
+      if (!window.__k) {
+        throw Error(`You must use "load" or "loadImage" to resolve tileset.image`);
+      }
+      // @endif
+
+      let image = window.__k.i[window.__k.u(tileset.image, url)];
+
+      // @ifdef DEBUG
+      if (!image) {
+        throw Error(`You must load the image "${tileset.image}" before loading the tileset`);
+      }
+      // @endif
+
+      tileset.image = image;
+    }
+  });
+
+  /**
+   * Get the row from the y coordinate.
+   * @private
+   *
+   * @param {Number} y - Y coordinate.
+   *
+   * @return {Number}
+   */
+  function getRow(y) {
+    return y / tileEngine.tileheight | 0;
   }
+
+  /**
+   * Get the col from the x coordinate.
+   * @private
+   *
+   * @param {Number} x - X coordinate.
+   *
+   * @return {Number}
+   */
+  function getCol(x) {
+    return x / tileEngine.tilewidth | 0;
+  }
+
+  /**
+   * Render a layer.
+   * @private
+   *
+   * @param {Object} layer - Layer data.
+   * @param {Context} context - Context to draw layer to.
+   */
+  function renderLayer(layer, context) {
+    context.save();
+    context.globalAlpha = layer.opacity;
+
+    (layer.data || []).map((tile, index) => {
+
+      // skip empty tiles (0)
+      if (!tile) return;
+
+      // find the tileset the tile belongs to
+      // assume tilesets are ordered by firstgid
+      let tileset;
+      for (let i = tileEngine.tilesets.length-1; i >= 0; i--) {
+        tileset = tileEngine.tilesets[i];
+
+        if (tile / tileset.firstgid >= 1) {
+          break;
+        }
+      }
+
+      let tilewidth = tileset.tilewidth || tileEngine.tilewidth;
+      let tileheight = tileset.tileheight || tileEngine.tileheight;
+      let margin = tileset.margin || 0;
+
+      let image = tileset.image;
+
+      let offset = tile - tileset.firstgid;
+      let cols = tileset.columns ||
+        image.width / (tilewidth + margin) | 0;
+
+      let x = (index % tileEngine.width) * tilewidth;
+      let y = (index / tileEngine.width | 0) * tileheight;
+      let sx = (offset % cols) * (tilewidth + margin);
+      let sy = (offset / cols | 0) * (tileheight + margin);
+
+      context.drawImage(
+        image,
+        sx, sy, tilewidth, tileheight,
+        x, y, tilewidth, tileheight
+      );
+    });
+
+    context.restore();
+  }
+
+  /**
+   * Pre-render the tiles to make drawing fast.
+   * @private
+   */
+  function prerender() {
+    if (tileEngine.layers) {
+      tileEngine.layers.map(layer => {
+        layer._d = false;
+        layerMap[layer.name] = layer;
+
+        if (layer.data && layer.visible !== false) {
+          tileEngine._r(layer, offscreenContext);
+        }
+      });
+    }
+  }
+
+  /**
+   * Render a tile engine canvas.
+   * @private
+   *
+   * @param {HTMLCanvasElement} canvas - Tile engine canvas to draw.
+   */
+  function render(canvas) {
+    const { width, height } = getCanvas();
+    const sWidth = Math.min(canvas.width, width);
+    const sHeight = Math.min(canvas.height, height);
+
+    tileEngine.context.drawImage(
+      canvas,
+      tileEngine.sx, tileEngine.sy, sWidth, sHeight,
+      0, 0, sWidth, sHeight
+    );
+  }
+
+  prerender();
+  return tileEngine;
+}var author = "Kasper Seweryn <github@wvffle.net>";const creditsText = () => {
+  return factory$4({
+    text: `js13k submission by ${author}`,
+    color: '#fff',
+    y: innerHeight - 16,
+    x: 8
+  })
+};var tilesets = [
+	"colored_tilemap_packed.png"
+];
+var layers = [
+	{
+		data: [
+			57,
+			2,
+			2,
+			2,
+			2,
+			58,
+			2,
+			2,
+			2,
+			2,
+			2,
+			2,
+			2,
+			2,
+			2,
+			58,
+			15,
+			16,
+			16,
+			16,
+			52,
+			18,
+			61,
+			16,
+			16,
+			12,
+			16,
+			16,
+			61,
+			16,
+			16,
+			18,
+			15,
+			48,
+			61,
+			61,
+			12,
+			18,
+			16,
+			81,
+			16,
+			61,
+			12,
+			16,
+			16,
+			16,
+			16,
+			18,
+			15,
+			16,
+			16,
+			16,
+			16,
+			18,
+			16,
+			61,
+			16,
+			12,
+			16,
+			61,
+			16,
+			61,
+			61,
+			18,
+			57,
+			2,
+			2,
+			2,
+			31,
+			58,
+			2,
+			2,
+			58,
+			2,
+			2,
+			30,
+			2,
+			4,
+			16,
+			18,
+			15,
+			16,
+			16,
+			16,
+			61,
+			18,
+			16,
+			16,
+			18,
+			16,
+			16,
+			61,
+			16,
+			18,
+			61,
+			18,
+			15,
+			61,
+			16,
+			11,
+			16,
+			18,
+			61,
+			16,
+			18,
+			16,
+			12,
+			16,
+			52,
+			18,
+			16,
+			18,
+			15,
+			16,
+			16,
+			16,
+			16,
+			18,
+			16,
+			16,
+			18,
+			61,
+			16,
+			16,
+			16,
+			18,
+			12,
+			18,
+			15,
+			11,
+			16,
+			61,
+			45,
+			32,
+			16,
+			61,
+			18,
+			16,
+			16,
+			61,
+			16,
+			18,
+			61,
+			18,
+			15,
+			16,
+			16,
+			16,
+			55,
+			16,
+			16,
+			16,
+			18,
+			2,
+			2,
+			2,
+			2,
+			32,
+			16,
+			18,
+			15,
+			16,
+			61,
+			16,
+			18,
+			16,
+			16,
+			61,
+			18,
+			16,
+			16,
+			16,
+			16,
+			16,
+			16,
+			18,
+			57,
+			2,
+			2,
+			2,
+			58,
+			16,
+			16,
+			16,
+			18,
+			16,
+			11,
+			16,
+			16,
+			16,
+			61,
+			18,
+			15,
+			16,
+			61,
+			16,
+			43,
+			61,
+			16,
+			16,
+			18,
+			16,
+			16,
+			16,
+			61,
+			16,
+			16,
+			18,
+			15,
+			5,
+			16,
+			61,
+			16,
+			16,
+			16,
+			16,
+			69,
+			16,
+			16,
+			16,
+			16,
+			16,
+			11,
+			18,
+			15,
+			16,
+			16,
+			61,
+			45,
+			16,
+			16,
+			61,
+			18,
+			16,
+			16,
+			61,
+			16,
+			16,
+			16,
+			18,
+			59,
+			31,
+			59,
+			59,
+			59,
+			59,
+			59,
+			59,
+			59,
+			59,
+			59,
+			59,
+			59,
+			59,
+			59,
+			59
+		],
+		flips: {
+			"33": 4
+		}
+	}
+];
+var width = 16;
+var height = 16;
+var tileSize = 8;var layers$1 = [
+	{
+		data: [
+			57,
+			2,
+			2,
+			2,
+			2,
+			2,
+			58,
+			2,
+			2,
+			2,
+			2,
+			58,
+			2,
+			2,
+			2,
+			58,
+			15,
+			16,
+			16,
+			16,
+			16,
+			16,
+			18,
+			16,
+			16,
+			61,
+			16,
+			18,
+			16,
+			16,
+			61,
+			18,
+			15,
+			47,
+			16,
+			16,
+			5,
+			16,
+			69,
+			16,
+			16,
+			16,
+			10,
+			18,
+			16,
+			20,
+			61,
+			18,
+			15,
+			16,
+			16,
+			16,
+			16,
+			16,
+			18,
+			16,
+			16,
+			16,
+			16,
+			18,
+			61,
+			16,
+			16,
+			18,
+			57,
+			2,
+			2,
+			2,
+			2,
+			2,
+			58,
+			16,
+			61,
+			16,
+			16,
+			18,
+			2,
+			2,
+			30,
+			58,
+			15,
+			61,
+			16,
+			16,
+			16,
+			61,
+			18,
+			16,
+			16,
+			16,
+			16,
+			18,
+			16,
+			81,
+			16,
+			18,
+			15,
+			16,
+			16,
+			16,
+			12,
+			16,
+			18,
+			16,
+			10,
+			16,
+			16,
+			18,
+			16,
+			16,
+			61,
+			18,
+			15,
+			12,
+			16,
+			16,
+			16,
+			16,
+			55,
+			16,
+			16,
+			16,
+			61,
+			18,
+			16,
+			16,
+			10,
+			18,
+			15,
+			16,
+			16,
+			61,
+			12,
+			16,
+			18,
+			16,
+			16,
+			16,
+			16,
+			18,
+			16,
+			16,
+			16,
+			18,
+			15,
+			61,
+			16,
+			16,
+			16,
+			16,
+			18,
+			16,
+			16,
+			61,
+			16,
+			18,
+			61,
+			16,
+			16,
+			18,
+			15,
+			16,
+			16,
+			16,
+			16,
+			16,
+			18,
+			16,
+			16,
+			16,
+			10,
+			18,
+			16,
+			16,
+			16,
+			18,
+			57,
+			2,
+			2,
+			31,
+			2,
+			2,
+			58,
+			2,
+			2,
+			31,
+			2,
+			58,
+			16,
+			10,
+			16,
+			18,
+			15,
+			16,
+			61,
+			16,
+			16,
+			16,
+			18,
+			16,
+			16,
+			16,
+			16,
+			18,
+			16,
+			16,
+			16,
+			18,
+			15,
+			48,
+			16,
+			16,
+			61,
+			12,
+			18,
+			16,
+			61,
+			12,
+			16,
+			69,
+			16,
+			16,
+			61,
+			18,
+			15,
+			16,
+			16,
+			10,
+			52,
+			16,
+			18,
+			16,
+			16,
+			61,
+			16,
+			18,
+			16,
+			16,
+			61,
+			18,
+			59,
+			59,
+			59,
+			59,
+			59,
+			59,
+			59,
+			59,
+			59,
+			59,
+			59,
+			59,
+			59,
+			59,
+			59,
+			59
+		],
+		flips: {
+		}
+	}
+];var layers$2 = [
+	{
+		data: [
+			57,
+			2,
+			2,
+			2,
+			58,
+			2,
+			2,
+			2,
+			2,
+			2,
+			2,
+			2,
+			2,
+			2,
+			2,
+			58,
+			15,
+			61,
+			52,
+			16,
+			18,
+			61,
+			16,
+			16,
+			69,
+			16,
+			16,
+			16,
+			16,
+			16,
+			61,
+			18,
+			15,
+			48,
+			24,
+			16,
+			55,
+			16,
+			24,
+			16,
+			18,
+			16,
+			61,
+			16,
+			10,
+			16,
+			16,
+			18,
+			15,
+			16,
+			16,
+			61,
+			18,
+			16,
+			16,
+			61,
+			18,
+			16,
+			16,
+			16,
+			16,
+			16,
+			16,
+			18,
+			57,
+			2,
+			2,
+			2,
+			2,
+			2,
+			4,
+			16,
+			18,
+			16,
+			10,
+			16,
+			121,
+			16,
+			10,
+			18,
+			15,
+			16,
+			16,
+			16,
+			16,
+			16,
+			18,
+			24,
+			18,
+			16,
+			16,
+			61,
+			16,
+			16,
+			16,
+			18,
+			15,
+			61,
+			16,
+			10,
+			61,
+			16,
+			69,
+			16,
+			18,
+			16,
+			16,
+			16,
+			10,
+			16,
+			61,
+			18,
+			15,
+			61,
+			16,
+			16,
+			16,
+			16,
+			18,
+			61,
+			18,
+			16,
+			61,
+			16,
+			16,
+			16,
+			16,
+			18,
+			15,
+			16,
+			16,
+			16,
+			61,
+			16,
+			18,
+			2,
+			2,
+			58,
+			2,
+			2,
+			2,
+			2,
+			31,
+			58,
+			15,
+			24,
+			16,
+			61,
+			16,
+			24,
+			18,
+			61,
+			16,
+			69,
+			16,
+			16,
+			61,
+			16,
+			16,
+			18,
+			15,
+			16,
+			16,
+			16,
+			16,
+			16,
+			18,
+			61,
+			16,
+			18,
+			16,
+			24,
+			16,
+			16,
+			61,
+			18,
+			57,
+			2,
+			2,
+			31,
+			2,
+			2,
+			58,
+			30,
+			57,
+			32,
+			16,
+			61,
+			16,
+			24,
+			16,
+			18,
+			15,
+			16,
+			61,
+			16,
+			16,
+			16,
+			18,
+			61,
+			15,
+			16,
+			16,
+			16,
+			61,
+			16,
+			16,
+			18,
+			15,
+			47,
+			16,
+			5,
+			16,
+			61,
+			18,
+			61,
+			15,
+			81,
+			16,
+			12,
+			16,
+			16,
+			24,
+			18,
+			15,
+			16,
+			16,
+			16,
+			16,
+			16,
+			18,
+			52,
+			15,
+			16,
+			61,
+			16,
+			16,
+			61,
+			16,
+			18,
+			59,
+			59,
+			59,
+			59,
+			59,
+			59,
+			59,
+			59,
+			59,
+			59,
+			59,
+			59,
+			59,
+			59,
+			59,
+			59
+		],
+		flips: {
+			"33": 4,
+			"209": 4
+		}
+	}
+];var layers$3 = [
+	{
+		data: [
+			57,
+			2,
+			2,
+			2,
+			2,
+			2,
+			58,
+			2,
+			2,
+			2,
+			2,
+			2,
+			2,
+			2,
+			2,
+			58,
+			15,
+			16,
+			16,
+			61,
+			16,
+			16,
+			18,
+			61,
+			16,
+			16,
+			16,
+			52,
+			16,
+			16,
+			16,
+			18,
+			15,
+			47,
+			61,
+			16,
+			5,
+			16,
+			18,
+			16,
+			16,
+			16,
+			16,
+			16,
+			23,
+			61,
+			16,
+			18,
+			15,
+			16,
+			16,
+			16,
+			16,
+			61,
+			18,
+			16,
+			61,
+			23,
+			16,
+			16,
+			16,
+			16,
+			61,
+			18,
+			57,
+			2,
+			2,
+			2,
+			31,
+			2,
+			32,
+			16,
+			16,
+			16,
+			16,
+			61,
+			16,
+			23,
+			16,
+			18,
+			15,
+			16,
+			16,
+			61,
+			16,
+			16,
+			16,
+			24,
+			16,
+			16,
+			23,
+			16,
+			16,
+			16,
+			16,
+			18,
+			15,
+			61,
+			24,
+			16,
+			61,
+			16,
+			16,
+			16,
+			61,
+			16,
+			16,
+			16,
+			61,
+			61,
+			16,
+			18,
+			57,
+			2,
+			2,
+			2,
+			58,
+			2,
+			2,
+			2,
+			2,
+			2,
+			2,
+			58,
+			2,
+			2,
+			31,
+			58,
+			15,
+			16,
+			16,
+			16,
+			18,
+			23,
+			61,
+			16,
+			23,
+			16,
+			16,
+			43,
+			16,
+			16,
+			16,
+			18,
+			15,
+			10,
+			61,
+			16,
+			55,
+			16,
+			16,
+			16,
+			16,
+			16,
+			16,
+			16,
+			61,
+			23,
+			16,
+			18,
+			15,
+			16,
+			16,
+			16,
+			18,
+			16,
+			16,
+			61,
+			16,
+			23,
+			16,
+			46,
+			16,
+			16,
+			61,
+			18,
+			57,
+			2,
+			2,
+			31,
+			2,
+			2,
+			4,
+			16,
+			16,
+			16,
+			16,
+			57,
+			2,
+			30,
+			2,
+			58,
+			15,
+			16,
+			61,
+			16,
+			16,
+			16,
+			18,
+			2,
+			2,
+			31,
+			2,
+			15,
+			61,
+			16,
+			16,
+			18,
+			15,
+			48,
+			16,
+			16,
+			61,
+			12,
+			18,
+			16,
+			16,
+			61,
+			16,
+			15,
+			16,
+			5,
+			16,
+			18,
+			15,
+			16,
+			16,
+			23,
+			52,
+			16,
+			18,
+			16,
+			23,
+			81,
+			16,
+			15,
+			67,
+			95,
+			61,
+			18,
+			59,
+			59,
+			59,
+			59,
+			59,
+			59,
+			59,
+			59,
+			59,
+			59,
+			59,
+			59,
+			59,
+			59,
+			59,
+			59
+		],
+		flips: {
+			"221": 3,
+			"236": 6,
+			"237": 5
+		}
+	}
+];var layers$4 = [
+	{
+		data: [
+			57,
+			2,
+			2,
+			2,
+			2,
+			2,
+			2,
+			2,
+			2,
+			2,
+			2,
+			2,
+			2,
+			2,
+			2,
+			58,
+			15,
+			16,
+			16,
+			16,
+			16,
+			16,
+			16,
+			16,
+			61,
+			16,
+			16,
+			16,
+			16,
+			16,
+			16,
+			18,
+			15,
+			16,
+			61,
+			122,
+			16,
+			61,
+			16,
+			16,
+			16,
+			16,
+			16,
+			16,
+			122,
+			16,
+			61,
+			18,
+			15,
+			16,
+			16,
+			28,
+			16,
+			16,
+			16,
+			16,
+			16,
+			61,
+			16,
+			16,
+			28,
+			16,
+			16,
+			18,
+			15,
+			61,
+			16,
+			16,
+			16,
+			16,
+			16,
+			16,
+			16,
+			16,
+			16,
+			16,
+			16,
+			61,
+			16,
+			18,
+			15,
+			16,
+			16,
+			16,
+			61,
+			16,
+			122,
+			16,
+			16,
+			122,
+			16,
+			16,
+			16,
+			16,
+			16,
+			18,
+			15,
+			16,
+			16,
+			16,
+			16,
+			16,
+			28,
+			16,
+			16,
+			28,
+			16,
+			61,
+			16,
+			16,
+			61,
+			18,
+			15,
+			16,
+			61,
+			16,
+			16,
+			16,
+			16,
+			16,
+			16,
+			16,
+			16,
+			16,
+			16,
+			16,
+			16,
+			18,
+			15,
+			16,
+			16,
+			16,
+			16,
+			16,
+			122,
+			16,
+			9,
+			122,
+			16,
+			16,
+			16,
+			16,
+			16,
+			18,
+			15,
+			16,
+			16,
+			61,
+			16,
+			16,
+			28,
+			16,
+			16,
+			28,
+			16,
+			16,
+			61,
+			16,
+			16,
+			18,
+			15,
+			16,
+			16,
+			16,
+			16,
+			16,
+			16,
+			16,
+			16,
+			16,
+			16,
+			16,
+			16,
+			16,
+			16,
+			18,
+			15,
+			61,
+			16,
+			122,
+			16,
+			16,
+			61,
+			16,
+			16,
+			16,
+			61,
+			16,
+			122,
+			16,
+			61,
+			18,
+			15,
+			16,
+			16,
+			28,
+			16,
+			16,
+			16,
+			16,
+			61,
+			16,
+			16,
+			16,
+			28,
+			16,
+			16,
+			18,
+			15,
+			47,
+			16,
+			16,
+			61,
+			16,
+			16,
+			16,
+			16,
+			16,
+			16,
+			16,
+			16,
+			16,
+			16,
+			18,
+			15,
+			16,
+			16,
+			16,
+			16,
+			16,
+			16,
+			16,
+			16,
+			16,
+			16,
+			61,
+			16,
+			16,
+			16,
+			18,
+			59,
+			59,
+			59,
+			59,
+			59,
+			59,
+			59,
+			59,
+			59,
+			59,
+			59,
+			59,
+			59,
+			59,
+			59,
+			59
+		],
+		flips: {
+			"209": 4
+		}
+	}
+];const getTransparentSprite = (image, size, id, transparentColor = '#222323') => {
+  const canvas = document.createElement('canvas');
+  const context = canvas.getContext('2d');
+
+  canvas.width = canvas.height = size;
+
+  const width = image.width / size;
+  const x = size * ((id - 1) % width);
+  const y = size * ((id - 1) / width ^ 0);
+  context.drawImage(image, x, y, size, size, 0, 0, size, size);
+
+  const imageData = context.getImageData(0, 0, size, size);
+  const { data } = imageData;
+
+  for (let i = 0; i < data.length; i += 4) {
+    if (data[i] === 34 && data[i + 1] === data[i + 2] && data[i + 2] === 35) {
+      data[i + 3] = 0;
+    }
+  }
+
+  context.putImageData(imageData, 0, 0);
+
+  // 34 35 35
+
+  return canvas
+};const TILESET = new Promise((resolve, reject) => {
+  const img = new Image;
+  img.src = tilesets[0];
+
+  img.onload = () => {
+    resolve(img);
+  };
+
+  img.onerror = err => reject(err);
 });
 
-renderLoop.start();}());
+const TILE_GROUND = 16;
+const TILE_SPAWN = 5;
+
+const MAPS = [
+  layers,
+  layers$1,
+  layers$2,
+  layers$3,
+  layers$4
+];
+const indexToRenderedXY = i => ({
+  x: tileSize * (i % width), 
+  y: tileSize * (i / width ^ 0) 
+});
+
+async function levelLoader (n = 0) {
+  const image = await TILESET;
+
+  const [map] = MAPS[n];
+
+  const meta = {
+    spawn: -1,
+    key: -1,
+    door: -1,
+    secret: -1,
+    stairs: -1,
+    dog: -1,
+    fire: -1,
+    chests: [],
+    skeletons: [],
+    zombies: [],
+    cultists: [],
+    ghosts: [],
+    slimes: [],
+  };
+
+  map.data = map.data.map((id, i) => {
+    if (id === TILE_SPAWN) {
+      meta.spawn = i;
+
+      return TILE_GROUND
+    }
+
+    if (id === 11) {
+      meta.skeletons.push(i);
+      return TILE_GROUND
+    }
+
+    if (id === 12) {
+      meta.zombies.push(i);
+      return TILE_GROUND
+    }
+
+    if (id === 10) {
+      meta.cultists.push(i);
+      return TILE_GROUND
+    }
+
+    if (id === 24) {
+      meta.ghosts.push(i);
+      return TILE_GROUND
+    }
+
+    if (id === 23) {
+      meta.slimes.push(i);
+      return TILE_GROUND
+    }
+
+    if (id === 20) {
+      meta.dog = i;
+      return TILE_GROUND
+    }
+
+    if (id === 20) {
+      meta.fire = i;
+    }
+
+
+    if (id === 81) {
+      meta.key = i;
+    }
+
+    if (id === 55) {
+      meta.door = i;
+    }
+
+    if (id === 48) {
+      meta.stairs = i;
+    }
+
+    if (id === 52) {
+      meta.chests.push(i);
+    }
+
+    return id
+  });
+
+  const tileEngine = TileEngine({
+    tilewidth: 8,
+    tileheight: 8,
+    width,
+    height,
+    tilesets: [{ firstgid: 1, image }],
+    layers: [map]
+  });
+
+
+  console.log(meta);
+  const player = factory$3({
+    ...indexToRenderedXY(meta.spawn),
+    image: getTransparentSprite(image, tileSize, TILE_SPAWN)
+  });
+
+  tileEngine.addObject(player);
+
+  return { 
+    level: tileEngine, 
+    player
+  }
+}const { canvas, context: context$1 } = init('c');
+
+// Scale context
+const SCALE = 5;
+canvas.height = canvas.width = SCALE * 8 * 16;
+context$1.imageSmoothingEnabled = false;
+context$1.scale(SCALE, SCALE);
+
+Promise.resolve().then(async () => {
+  // Init controls
+  initKeys();
+
+  // Init objects and scenes
+  const credits = creditsText();
+  let level = await levelLoader();
+
+  // Bind keys
+  
+  // @ifdef DEBUG
+  const debug = {
+    ids: false
+  };
+
+  bindKeys('0', () => {
+    debug.ids = !debug.ids;
+  });
+
+  for (const n of [0, 1, 2, 3, 4]) {
+    bindKeys((n + 1).toString(), async () => {
+      level = await levelLoader(n);
+    });
+  }
+  // @endif
+
+  // Game loop
+  GameLoop({
+    update () {
+    },
+
+    render () {
+      level.level.render();
+      level.player.render();
+
+      // @ifdef DEBUG
+      if (debug.ids) {
+        level.level.layers[0].data.map((id, i) => {
+          const x = i % 16;
+          const y = i / 16 ^ 0;
+
+          context$1.font = '3px monospace';
+          context$1.fillStyle = '#000';
+          context$1.fillText(id, x * 8 + .2, y * 8 + 8.2);
+          context$1.fillStyle = '#fff';
+          context$1.fillText(id, x * 8, y * 8 + 8);
+        });
+      }
+      // @endif
+      
+      credits.render();
+    }
+  }).start();
+});}());

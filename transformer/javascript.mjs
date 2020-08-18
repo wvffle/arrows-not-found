@@ -7,8 +7,9 @@ import json from '@rollup/plugin-json'
 import { promises as fs } from 'fs'
 import { minify } from 'terser'
 import preprocess from 'preprocess'
+import debounce from 'p-debounce'
 
-export default async (PRODUCTION) => {
+export default debounce(async (PRODUCTION) => {
   const bundle = await rollup({
     input: {
       main: 'src/js/main.js'
@@ -79,4 +80,4 @@ export default async (PRODUCTION) => {
 
   await fs.writeFile('public/main.js', js)
   return pug(PRODUCTION)
-}
+}, 500)

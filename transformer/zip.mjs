@@ -5,6 +5,12 @@ export default async () => {
   const zip = new yazl.ZipFile()
   zip.addFile(`${process.cwd()}/public/index.html`, 'index.html')
 
+  for (const file of await fs.readdir('public')) {
+    if (file.endsWith('.png') || file.endsWith('.jpg')) {
+      zip.addFile(`${process.cwd()}/public/${file}`, file)
+    }
+  }
+
   zip.outputStream.pipe(createWriteStream(`${process.cwd()}/public/game-build.zip`))
     .on('close', async () => {
       const { size } = await fs.stat(`${process.cwd()}/public/game-build.zip`)

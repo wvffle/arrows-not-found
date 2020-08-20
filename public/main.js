@@ -2096,6 +2096,42 @@ function bindKeys(keys, callback) {
 }
 
 /**
+ * Check if a key is currently pressed. Use during an `update()` function to perform actions each frame.
+ *
+ * ```js
+ * import { Sprite, initKeys, keyPressed } from 'kontra';
+ *
+ * initKeys();
+ *
+ * let sprite = Sprite({
+ *   update: function() {
+ *     if (keyPressed('left')){
+ *       // left arrow pressed
+ *     }
+ *     else if (keyPressed('right')) {
+ *       // right arrow pressed
+ *     }
+ *
+ *     if (keyPressed('up')) {
+ *       // up arrow pressed
+ *     }
+ *     else if (keyPressed('down')) {
+ *       // down arrow pressed
+ *     }
+ *   }
+ * });
+ * ```
+ * @function keyPressed
+ *
+ * @param {String} key - Key to check for pressed state.
+ *
+ * @returns {Boolean} `true` if the key is pressed, `false` otherwise.
+ */
+function keyPressed(key) {
+  return !!pressedKeys[key];
+}
+
+/**
  * A tile engine for managing and drawing tilesets.
  *
  * <figure>
@@ -4053,38 +4089,12 @@ var tileSize = 8;var layers$1 = [
   // 34 35 35
 
   return canvas
-};
-
-const easeInOutCirc = x => {
-  const { pow, sqrt } = Math;
-  return x < 0.5
-    ? (1 - sqrt(1 - pow(2 * x, 2))) / 2
-    : (sqrt(1 - pow(-2 * x + 2, 2)) + 1) / 2
 };class Entity {
   constructor (gameObject) {
     this.object = gameObject;
-    this.dateLast = performance.now();
-    this.x = 1;
-    this.y = -1;
-    this._la = 0;
-    this._u = 0;
   }
 
-  update (delta, accumulator) {
-    if ((this._la ^ 0) !== (accumulator ^ 0)) {
-      this._la = accumulator ^ 0;
-      this._u = 0;
-
-      this.object.x = Math.round(this.object.x);
-      this.object.y = Math.round(this.object.y);
-
-      this.x = 0;
-      this.y = 0;
-    }
-
-    this._u += 1;
-    this.object.x += this.x * easeInOutCirc(this._u / 60) / 29.5 * 8;
-    this.object.y += this.y * easeInOutCirc(this._u / 60) / 29.5 * 8;
+  update () {
     this.object.update();
   }
 
@@ -4221,6 +4231,9 @@ async function levelLoader (n = 0) {
   }
 }const { canvas, context: context$1 } = init('c');
 
+// Physics
+const SPEED = .6;
+
 // Scale context
 const SCALE = 5;
 canvas.height = canvas.width = SCALE * 8 * 16;
@@ -4250,20 +4263,34 @@ Promise.resolve().then(async () => {
       level = await levelLoader(n);
     });
   }
-  // @endif
-  
-  const { player } = level;
-  
-  bindKeys('h', () => (player.x -= 1));
-  bindKeys('j', () => (player.y += 1));
-  bindKeys('k', () => (player.y -= 1));
-  bindKeys('l', () => (player.x += 1));
 
-  let accumulator = 0;
   GameLoop({
-    update (delta) {
-      accumulator += delta;
-      level.player.update(delta, accumulator);
+    update () {
+      const moveFlags = 8 * keyPressed('h')
+        + 4 * keyPressed('j')
+        + 2 * keyPressed('k')
+        + keyPressed('l');
+
+      level.player.object.velocity.x = 0;
+      level.player.object.velocity.y = 0;
+
+      if (moveFlags & 0b1000) {
+        level.player.object.velocity.x -= SPEED;
+      }
+
+      if (moveFlags & 0b0001) {
+        level.player.object.velocity.x += SPEED;
+      }
+
+      if (moveFlags & 0b0010) {
+        level.player.object.velocity.y -= SPEED;
+      }
+
+      if (moveFlags & 0b0100) {
+        level.player.object.velocity.y += SPEED;
+      }
+
+      level.player.update();
     },
 
     render () {

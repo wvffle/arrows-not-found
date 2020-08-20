@@ -6,6 +6,9 @@ import loadLevel from './views/game.js'
 
 const { canvas, context } = init('c')
 
+// Physics
+const SPEED = .6
+
 // Scale context
 const SCALE = 5
 canvas.height = canvas.width = SCALE * 8 * 16
@@ -38,17 +41,34 @@ Promise.resolve().then(async () => {
   // @endif
   
   const { player } = level
-  
-  bindKeys('h', () => (player.x -= 1))
-  bindKeys('j', () => (player.y += 1))
-  bindKeys('k', () => (player.y -= 1))
-  bindKeys('l', () => (player.x += 1))
 
-  let accumulator = 0
   GameLoop({
-    update (delta) {
-      accumulator += delta
-      level.player.update(delta, accumulator)
+    update () {
+      const moveFlags = 8 * keyPressed('h')
+        + 4 * keyPressed('j')
+        + 2 * keyPressed('k')
+        + keyPressed('l')
+
+      level.player.object.velocity.x = 0
+      level.player.object.velocity.y = 0
+
+      if (moveFlags & 0b1000) {
+        level.player.object.velocity.x -= SPEED
+      }
+
+      if (moveFlags & 0b0001) {
+        level.player.object.velocity.x += SPEED
+      }
+
+      if (moveFlags & 0b0010) {
+        level.player.object.velocity.y -= SPEED
+      }
+
+      if (moveFlags & 0b0100) {
+        level.player.object.velocity.y += SPEED
+      }
+
+      level.player.update()
     },
 
     render () {

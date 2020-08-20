@@ -51,3 +51,10 @@ export const getTransparentSprite = (image, size, id, transparentColor = '#22232
 
   return canvas
 }
+
+export const easeInOutCirc = x => {
+  const { pow, sqrt } = Math
+  return x < 0.5
+    ? (1 - sqrt(1 - pow(2 * x, 2))) / 2
+    : (sqrt(1 - pow(-2 * x + 2, 2)) + 1) / 2
+}

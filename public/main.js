@@ -4053,7 +4053,45 @@ var tileSize = 8;var layers$1 = [
   // 34 35 35
 
   return canvas
-};const TILESET = new Promise((resolve, reject) => {
+};
+
+const easeInOutCirc = x => {
+  const { pow, sqrt } = Math;
+  return x < 0.5
+    ? (1 - sqrt(1 - pow(2 * x, 2))) / 2
+    : (sqrt(1 - pow(-2 * x + 2, 2)) + 1) / 2
+};class Entity {
+  constructor (gameObject) {
+    this.object = gameObject;
+    this.dateLast = performance.now();
+    this.x = 1;
+    this.y = -1;
+    this._la = 0;
+    this._u = 0;
+  }
+
+  update (delta, accumulator) {
+    if ((this._la ^ 0) !== (accumulator ^ 0)) {
+      this._la = accumulator ^ 0;
+      this._u = 0;
+
+      this.object.x = Math.round(this.object.x);
+      this.object.y = Math.round(this.object.y);
+
+      this.x = 0;
+      this.y = 0;
+    }
+
+    this._u += 1;
+    this.object.x += this.x * easeInOutCirc(this._u / 60) / 29.5 * 8;
+    this.object.y += this.y * easeInOutCirc(this._u / 60) / 29.5 * 8;
+    this.object.update();
+  }
+
+  render () {
+    return this.object.render()
+  }
+}const TILESET = new Promise((resolve, reject) => {
   const img = new Image;
   img.src = tilesets[0];
 
@@ -4161,26 +4199,24 @@ async function levelLoader (n = 0) {
     return id
   });
 
-  const tileEngine = TileEngine({
-    tilewidth: 8,
-    tileheight: 8,
+  const engine = TileEngine({
+    tilewidth: tileSize,
+    tileheight: tileSize,
     width,
     height,
     tilesets: [{ firstgid: 1, image }],
     layers: [map]
   });
 
-
-  console.log(meta);
-  const player = factory$3({
+  const player = new Entity(factory$3({
     ...indexToRenderedXY(meta.spawn),
     image: getTransparentSprite(image, tileSize, TILE_SPAWN)
-  });
+  }));
 
-  tileEngine.addObject(player);
+  engine.addObject(player);
 
   return { 
-    level: tileEngine, 
+    engine, 
     player
   }
 }const { canvas, context: context$1 } = init('c');
@@ -4209,26 +4245,34 @@ Promise.resolve().then(async () => {
   bindKeys('0', () => {
     debug.ids = !debug.ids;
   });
-
   for (const n of [0, 1, 2, 3, 4]) {
     bindKeys((n + 1).toString(), async () => {
       level = await levelLoader(n);
     });
   }
   // @endif
+  
+  const { player } = level;
+  
+  bindKeys('h', () => (player.x -= 1));
+  bindKeys('j', () => (player.y += 1));
+  bindKeys('k', () => (player.y -= 1));
+  bindKeys('l', () => (player.x += 1));
 
-  // Game loop
+  let accumulator = 0;
   GameLoop({
-    update () {
+    update (delta) {
+      accumulator += delta;
+      level.player.update(delta, accumulator);
     },
 
     render () {
-      level.level.render();
+      level.engine.render();
       level.player.render();
 
       // @ifdef DEBUG
       if (debug.ids) {
-        level.level.layers[0].data.map((id, i) => {
+        level.engine.layers[0].data.map((id, i) => {
           const x = i % 16;
           const y = i / 16 ^ 0;
 
@@ -4240,7 +4284,7 @@ Promise.resolve().then(async () => {
         });
       }
       // @endif
-      
+
       credits.render();
     }
   }).start();

@@ -5,7 +5,7 @@ import { layers as level3 } from '../../maps/3.json'
 import { layers as level4 } from '../../maps/4.json'
 import { layers as level5 } from '../../maps/5.json'
 import { getTransparentSprite } from '../utils.js'
-
+import Entity from '../entity.js'
 
 const H = innerHeight
 const W = innerWidth
@@ -120,26 +120,24 @@ export default async function levelLoader (n = 0) {
     return id
   })
 
-  const tileEngine = TileEngine({
-    tilewidth: 8,
-    tileheight: 8,
+  const engine = TileEngine({
+    tilewidth: tileSize,
+    tileheight: tileSize,
     width,
     height,
     tilesets: [{ firstgid: 1, image }],
     layers: [map]
   })
 
-
-  console.log(meta)
-  const player = Sprite({
+  const player = new Entity(Sprite({
     ...indexToRenderedXY(meta.spawn),
     image: getTransparentSprite(image, tileSize, TILE_SPAWN)
-  })
+  }))
 
-  tileEngine.addObject(player)
+  engine.addObject(player)
 
   return { 
-    level: tileEngine, 
+    engine, 
     player
   }
 }

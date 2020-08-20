@@ -1,4 +1,4 @@
-import { init, GameLoop, initKeys, bindKeys } from 'kontra'
+import { init, GameLoop, initKeys, bindKeys, keyPressed } from 'kontra'
 import { creditsText } from './views/credits.js'
 import { Box2, Vector2 as Vec2 } from 'math-ds'
 
@@ -30,26 +30,34 @@ Promise.resolve().then(async () => {
   bindKeys('0', () => {
     debug.ids = !debug.ids
   })
-
   for (const n of [0, 1, 2, 3, 4]) {
     bindKeys((n + 1).toString(), async () => {
       level = await loadLevel(n)
     })
   }
   // @endif
+  
+  const { player } = level
+  
+  bindKeys('h', () => (player.x -= 1))
+  bindKeys('j', () => (player.y += 1))
+  bindKeys('k', () => (player.y -= 1))
+  bindKeys('l', () => (player.x += 1))
 
-  // Game loop
+  let accumulator = 0
   GameLoop({
-    update () {
+    update (delta) {
+      accumulator += delta
+      level.player.update(delta, accumulator)
     },
 
     render () {
-      level.level.render()
+      level.engine.render()
       level.player.render()
 
       // @ifdef DEBUG
       if (debug.ids) {
-        level.level.layers[0].data.map((id, i) => {
+        level.engine.layers[0].data.map((id, i) => {
           const x = i % 16
           const y = i / 16 ^ 0
 
@@ -61,7 +69,7 @@ Promise.resolve().then(async () => {
         })
       }
       // @endif
-      
+
       credits.render()
     }
   }).start()

@@ -2700,7 +2700,24 @@ function TileEngine(properties) {
     y: innerHeight - 16,
     x: 8
   })
-};var tilesets = [
+};// Rendering
+const SCALE = 5;
+
+// Tiles
+const TILE_GROUND = 16;
+const TILE_SPAWN = 5;
+
+// Physics
+const ERROR_CORRECTION = 0.13333333333331593;
+
+const DIRECTION_NONE = 0;
+const DIRECTION_LEFT = 1;
+const DIRECTION_DOWN = 2;
+const DIRECTION_RIGHT = 3;
+const DIRECTION_UP = 4;
+
+// Game options
+const GAME_SPEED = 2;var tilesets = [
 	"colored_tilemap_packed.png"
 ];
 var layers = [
@@ -4053,64 +4070,62 @@ var tileSize = 8;var layers$1 = [
   // 34 35 35
 
   return canvas
-};const ERROR_CORRECTION = 0.13333333333331593;
-
-class Entity {
+};class Entity {
   constructor (gameObject, level) {
     this.object = gameObject;
     this.level = level;
-    this._x = 0;
-    this._y = 0;
+    this.direction = DIRECTION_NONE;
 
-    this.moving = false;
+    this.x = 0;
+    this.y = 0;
   }
 
-  get x () {
-    return this._x
-  }
+  update (delta, moveUpdate) {
+    if (moveUpdate) {
+      switch (this.direction) {
+        case DIRECTION_UP:    this.y = -1; break
+        case DIRECTION_DOWN:  this.y =  1; break
+        case DIRECTION_LEFT:  this.x = -1; break
+        case DIRECTION_RIGHT: this.x =  1; break
+      }
 
-  get y () {
-    return this._y
-  }
+      this.direction = DIRECTION_NONE;
 
-  set x (x) {
-    if (!this.moving) {
-      this.moving = true;
-      return this._x = x
+      const x = this.object.x / this.object.width ^ 0;
+      const y = this.object.y / this.object.width ^ 0;
+      const i = y * width + x;
+
+      const node = this.level.graph[i];
+      const neighbour = [...node.neighbours].some(n => n.x === x + this.x && n.y === y + this.y);
+
+      if (!neighbour) {
+        this.x = 0;
+        this.y = 0;
+      }
     }
-  }
 
-  set y (y) {
-    if (!this.moving) {
-      this.moving = true;
-      return this._y = y
-    }
-  }
-
-  update (delta, moveUpdate, acc) {
-    this.object.x += this.x * delta * (this.object.width * 2 - ERROR_CORRECTION);
-    this.object.y += this.y * delta * (this.object.width * 2 - ERROR_CORRECTION);
+    this.object.x += this.x * delta * GAME_SPEED * (this.object.width * 2 - ERROR_CORRECTION);
+    this.object.y += this.y * delta * GAME_SPEED * (this.object.width * 2 - ERROR_CORRECTION);
 
     if (this.x > 0) {
-      this._x = Math.max(this.x - delta, 0);
+      this.x = Math.max(this.x - delta * GAME_SPEED, 0);
     }
 
     if (this.x < 0) {
-      this._x = Math.min(this.x + delta, 0);
+      this.x = Math.min(this.x + delta * GAME_SPEED, 0);
     }
 
     if (this.y > 0) {
-      this._y = Math.max(this.y - delta, 0);
+      this.y = Math.max(this.y - delta * GAME_SPEED, 0);
     }
 
     if (this.y < 0) {
-      this._y = Math.min(this.y + delta, 0);
+      this.y = Math.min(this.y + delta * GAME_SPEED, 0);
     }
 
     if (this.x === 0 && this.y === 0) {
       this.object.x = Math.round(this.object.x);
       this.object.y = Math.round(this.object.y);
-      this.moving = false;
     }
 
     return this.object.update()
@@ -4129,9 +4144,6 @@ class Entity {
 
   img.onerror = err => reject(err);
 });
-
-const TILE_GROUND = 16;
-const TILE_SPAWN = 5;
 
 const MAPS = [
   layers,
@@ -4228,29 +4240,70 @@ async function levelLoader (n = 0) {
   });
 
   const collisionMap = {
-    43: 0b00100000,
-    45: 0b00010000,
-    46: 0b00000010,
+    43: 0b0100,
+    45: 0b0100,
+    46: 0b0001,
 
-    59: 0b11000000,
-    18: 0b00110000,
-    55: 0b00110000,
-    15: 0b00000011,
+    59: 0b1000,
+    18: 0b0100,
+    55: 0b0100,
+    15: 0b0001,
 
-    2:  0b11001100,
-    30: 0b11001100,
-    31: 0b00110011,
+    2:  0b1010,
+    30: 0b1010,
+    31: 0b0101,
 
 
-    57: 0b11001111,
-    4:  0b11111100,
-    32: 0b11111100,
-    58: 0b11111100,
+    57: 0b1011,
+    4:  0b1110,
+    32: 0b1110,
+    58: 0b1110,
 
-    28: 0b11111111,
+    28: 0b1111,
   };
 
-  const collisions = map.data.map(id => collisionMap[id] || 0);
+  class GraphNode {
+    constructor (id, i) {
+      this.id = id;
+      this.neighbours = new Set();
+      this.x = i % width;
+      this.y = i / width ^ 0;
+    }
+
+    add (node) {
+      this.neighbours.add(node);
+      node.neighbours.add(this);
+    }
+  }
+
+  // const collisions = map.data.map(id => collisionMap[id] || 0)
+  const graph = map.data.map((id, i) => new GraphNode(id, i));
+
+  graph.map((node, i) => {
+    // Up/Down
+    if (i - width >= 0) {
+      const node2 = graph[i - width];
+
+      const c1 = collisionMap[node.id];
+      const c2 = collisionMap[node2.id];
+
+      if (!(c1 & 0b1000) && !(c2 & 0b0010)) {
+        node.add(node2);
+      }
+    }
+
+    // Left/Right
+    if (i % width !== 0) {
+      const node2 = graph[i - 1];
+
+      const c1 = collisionMap[node.id];
+      const c2 = collisionMap[node2.id];
+
+      if (!(c1 & 0b0001) && !(c2 & 0b0100)) {
+        node.add(node2);
+      }
+    }
+  });
 
   const engine = TileEngine({
     tilewidth: tileSize,
@@ -4264,19 +4317,18 @@ async function levelLoader (n = 0) {
   const player = new Entity(factory$3({
     ...indexToRenderedXY(meta.spawn),
     image: getTransparentSprite(image, tileSize, TILE_SPAWN)
-  }), { map: map.data, collisions });
+  }), { map: map.data, graph });
 
   engine.addObject(player);
 
   return { 
     engine, 
     player,
-    collisions
+    graph
   }
 }const { canvas, context: context$1 } = init('c');
 
 // Scale context
-const SCALE = 5;
 canvas.height = canvas.width = SCALE * 8 * 16;
 context$1.imageSmoothingEnabled = false;
 context$1.scale(SCALE, SCALE);
@@ -4294,7 +4346,7 @@ Promise.resolve().then(async () => {
   // @ifdef DEBUG
   const debug = {
     ids: false,
-    collision: false,
+    graph: false,
   };
 
   bindKeys('0', () => {
@@ -4302,7 +4354,7 @@ Promise.resolve().then(async () => {
   });
 
   bindKeys('9', () => {
-    debug.collision = !debug.collision;
+    debug.graph = !debug.graph;
   });
 
   for (const n of [0, 1, 2, 3, 4]) {
@@ -4315,10 +4367,10 @@ Promise.resolve().then(async () => {
   const { player } = level;
   let acc = 0;
 
-  bindKeys('h', () => (player.x = -1));
-  bindKeys('j', () => (player.y = 1));
-  bindKeys('k', () => (player.y = -1));
-  bindKeys('l', () => (player.x = 1));
+  bindKeys('h', () => (player.direction = DIRECTION_LEFT));
+  bindKeys('j', () => (player.direction = DIRECTION_DOWN));
+  bindKeys('k', () => (player.direction = DIRECTION_UP));
+  bindKeys('l', () => (player.direction = DIRECTION_RIGHT));
 
   GameLoop({
     update (delta) {
@@ -4350,8 +4402,8 @@ Promise.resolve().then(async () => {
       }
         */
 
-      level.player.update(delta, acc >= 1, acc);
-      if (acc >= 1) {
+      level.player.update(delta, acc >= 1 / GAME_SPEED);
+      if (acc >= 1 / GAME_SPEED) {
         acc = 0;
       }
     },
@@ -4371,58 +4423,6 @@ Promise.resolve().then(async () => {
           context$1.fillText(id, x * 8 + .2, y * 8 + 8.2);
           context$1.fillStyle = '#fff';
           context$1.fillText(id, x * 8, y * 8 + 8);
-        });
-      }
-
-      if (debug.collision) {
-        level.collisions.map((flags, i) => {
-          const x = 8 * (i % 16);
-          const y = 8 * (i / 16 ^ 0);
-
-          context$1.strokeStyle = '#f00';
-          context$1.lineWidth = .1;
-
-          if (flags & 0b10000000) {
-            context$1.moveTo(x, y);
-            context$1.lineTo(x + 4, y);
-          }
-
-          if (flags & 0b01000000) {
-            context$1.moveTo(x + 4, y);
-            context$1.lineTo(x + 8, y);
-          }
-
-          if (flags & 0b00100000) {
-            context$1.moveTo(x + 8, y);
-            context$1.lineTo(x + 8, y + 4);
-          }
-
-          if (flags & 0b00010000) {
-            context$1.moveTo(x + 8, y + 4);
-            context$1.lineTo(x + 8, y + 8);
-          }
-
-          if (flags & 0b00001000) {
-            context$1.moveTo(x + 8, y + 8);
-            context$1.lineTo(x + 4, y + 8);
-          }
-
-          if (flags & 0b00000100) {
-            context$1.moveTo(x + 4, y + 8);
-            context$1.lineTo(x, y + 8);
-          }
-
-          if (flags & 0b00000010) {
-            context$1.moveTo(x, y + 8);
-            context$1.lineTo(x, y + 4);
-          }
-
-          if (flags & 0b00000001) {
-            context$1.moveTo(x, y + 4);
-            context$1.lineTo(x, y);
-          }
-
-          context$1.stroke();
         });
       }
       // @endif

@@ -1,16 +1,13 @@
 import { init, GameLoop, initKeys, bindKeys, keyPressed } from 'kontra'
 import { creditsText } from './views/credits.js'
 import { Box2, Vector2 as Vec2 } from 'math-ds'
+import { DIRECTION_LEFT, DIRECTION_DOWN, DIRECTION_UP, DIRECTION_RIGHT, SCALE, GAME_SPEED } from './constants.js'
 
 import loadLevel from './views/game.js'
 
 const { canvas, context } = init('c')
 
-// Physics
-const SPEED = .6
-
 // Scale context
-const SCALE = 5
 canvas.height = canvas.width = SCALE * 8 * 16
 context.imageSmoothingEnabled = false
 context.scale(SCALE, SCALE)
@@ -28,7 +25,7 @@ Promise.resolve().then(async () => {
   // @ifdef DEBUG
   const debug = {
     ids: false,
-    collision: false,
+    graph: false,
   }
 
   bindKeys('0', () => {
@@ -36,7 +33,7 @@ Promise.resolve().then(async () => {
   })
 
   bindKeys('9', () => {
-    debug.collision = !debug.collision
+    debug.graph = !debug.graph
   })
 
   for (const n of [0, 1, 2, 3, 4]) {
@@ -49,10 +46,10 @@ Promise.resolve().then(async () => {
   const { player } = level
   let acc = 0
 
-  bindKeys('h', () => (player.x = -1))
-  bindKeys('j', () => (player.y = 1))
-  bindKeys('k', () => (player.y = -1))
-  bindKeys('l', () => (player.x = 1))
+  bindKeys('h', () => (player.direction = DIRECTION_LEFT))
+  bindKeys('j', () => (player.direction = DIRECTION_DOWN))
+  bindKeys('k', () => (player.direction = DIRECTION_UP))
+  bindKeys('l', () => (player.direction = DIRECTION_RIGHT))
 
   GameLoop({
     update (delta) {
@@ -84,8 +81,8 @@ Promise.resolve().then(async () => {
       }
         */
 
-      level.player.update(delta, acc >= 1, acc)
-      if (acc >= 1) {
+      level.player.update(delta, acc >= 1 / GAME_SPEED)
+      if (acc >= 1 / GAME_SPEED) {
         acc = 0
       }
     },
@@ -108,56 +105,9 @@ Promise.resolve().then(async () => {
         })
       }
 
-      if (debug.collision) {
-        level.collisions.map((flags, i) => {
-          const x = 8 * (i % 16)
-          const y = 8 * (i / 16 ^ 0)
 
-          context.strokeStyle = '#f00'
-          context.lineWidth = .1
-
-          if (flags & 0b10000000) {
-            context.moveTo(x, y)
-            context.lineTo(x + 4, y)
-          }
-
-          if (flags & 0b01000000) {
-            context.moveTo(x + 4, y)
-            context.lineTo(x + 8, y)
-          }
-
-          if (flags & 0b00100000) {
-            context.moveTo(x + 8, y)
-            context.lineTo(x + 8, y + 4)
-          }
-
-          if (flags & 0b00010000) {
-            context.moveTo(x + 8, y + 4)
-            context.lineTo(x + 8, y + 8)
-          }
-
-          if (flags & 0b00001000) {
-            context.moveTo(x + 8, y + 8)
-            context.lineTo(x + 4, y + 8)
-          }
-
-          if (flags & 0b00000100) {
-            context.moveTo(x + 4, y + 8)
-            context.lineTo(x, y + 8)
-          }
-
-          if (flags & 0b00000010) {
-            context.moveTo(x, y + 8)
-            context.lineTo(x, y + 4)
-          }
-
-          if (flags & 0b00000001) {
-            context.moveTo(x, y + 4)
-            context.lineTo(x, y)
-          }
-
-          context.stroke()
-        })
+      if (debug.graph) {
+        const visited = new Set()
       }
       // @endif
 

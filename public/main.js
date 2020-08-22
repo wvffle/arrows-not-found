@@ -2096,42 +2096,6 @@ function bindKeys(keys, callback) {
 }
 
 /**
- * Check if a key is currently pressed. Use during an `update()` function to perform actions each frame.
- *
- * ```js
- * import { Sprite, initKeys, keyPressed } from 'kontra';
- *
- * initKeys();
- *
- * let sprite = Sprite({
- *   update: function() {
- *     if (keyPressed('left')){
- *       // left arrow pressed
- *     }
- *     else if (keyPressed('right')) {
- *       // right arrow pressed
- *     }
- *
- *     if (keyPressed('up')) {
- *       // up arrow pressed
- *     }
- *     else if (keyPressed('down')) {
- *       // down arrow pressed
- *     }
- *   }
- * });
- * ```
- * @function keyPressed
- *
- * @param {String} key - Key to check for pressed state.
- *
- * @returns {Boolean} `true` if the key is pressed, `false` otherwise.
- */
-function keyPressed(key) {
-  return !!pressedKeys[key];
-}
-
-/**
  * A tile engine for managing and drawing tilesets.
  *
  * <figure>
@@ -4089,13 +4053,67 @@ var tileSize = 8;var layers$1 = [
   // 34 35 35
 
   return canvas
-};class Entity {
-  constructor (gameObject) {
+};const ERROR_CORRECTION = 0.13333333333331593;
+
+class Entity {
+  constructor (gameObject, level) {
     this.object = gameObject;
+    this.level = level;
+    this._x = 0;
+    this._y = 0;
+
+    this.moving = false;
   }
 
-  update () {
-    this.object.update();
+  get x () {
+    return this._x
+  }
+
+  get y () {
+    return this._y
+  }
+
+  set x (x) {
+    if (!this.moving) {
+      this.moving = true;
+      return this._x = x
+    }
+  }
+
+  set y (y) {
+    if (!this.moving) {
+      this.moving = true;
+      return this._y = y
+    }
+  }
+
+  update (delta, moveUpdate, acc) {
+    this.object.x += this.x * delta * (this.object.width * 2 - ERROR_CORRECTION);
+    this.object.y += this.y * delta * (this.object.width * 2 - ERROR_CORRECTION);
+
+    if (this.x > 0) {
+      this._x = Math.max(this.x - delta, 0);
+    }
+
+    if (this.x < 0) {
+      this._x = Math.min(this.x + delta, 0);
+    }
+
+    if (this.y > 0) {
+      this._y = Math.max(this.y - delta, 0);
+    }
+
+    if (this.y < 0) {
+      this._y = Math.min(this.y + delta, 0);
+    }
+
+    if (this.x === 0 && this.y === 0) {
+      this.object.x = Math.round(this.object.x);
+      this.object.y = Math.round(this.object.y);
+      this.moving = false;
+    }
+
+    return this.object.update()
   }
 
   render () {
@@ -4209,6 +4227,31 @@ async function levelLoader (n = 0) {
     return id
   });
 
+  const collisionMap = {
+    43: 0b00100000,
+    45: 0b00010000,
+    46: 0b00000010,
+
+    59: 0b11000000,
+    18: 0b00110000,
+    55: 0b00110000,
+    15: 0b00000011,
+
+    2:  0b11001100,
+    30: 0b11001100,
+    31: 0b00110011,
+
+
+    57: 0b11001111,
+    4:  0b11111100,
+    32: 0b11111100,
+    58: 0b11111100,
+
+    28: 0b11111111,
+  };
+
+  const collisions = map.data.map(id => collisionMap[id] || 0);
+
   const engine = TileEngine({
     tilewidth: tileSize,
     tileheight: tileSize,
@@ -4221,18 +4264,16 @@ async function levelLoader (n = 0) {
   const player = new Entity(factory$3({
     ...indexToRenderedXY(meta.spawn),
     image: getTransparentSprite(image, tileSize, TILE_SPAWN)
-  }));
+  }), { map: map.data, collisions });
 
   engine.addObject(player);
 
   return { 
     engine, 
-    player
+    player,
+    collisions
   }
 }const { canvas, context: context$1 } = init('c');
-
-// Physics
-const SPEED = .6;
 
 // Scale context
 const SCALE = 5;
@@ -4252,45 +4293,67 @@ Promise.resolve().then(async () => {
   
   // @ifdef DEBUG
   const debug = {
-    ids: false
+    ids: false,
+    collision: false,
   };
 
   bindKeys('0', () => {
     debug.ids = !debug.ids;
   });
+
+  bindKeys('9', () => {
+    debug.collision = !debug.collision;
+  });
+
   for (const n of [0, 1, 2, 3, 4]) {
     bindKeys((n + 1).toString(), async () => {
       level = await levelLoader(n);
     });
   }
+  // @endif
+  
+  const { player } = level;
+  let acc = 0;
+
+  bindKeys('h', () => (player.x = -1));
+  bindKeys('j', () => (player.y = 1));
+  bindKeys('k', () => (player.y = -1));
+  bindKeys('l', () => (player.x = 1));
 
   GameLoop({
-    update () {
+    update (delta) {
+      acc += delta;
+
+        /*
       const moveFlags = 8 * keyPressed('h')
         + 4 * keyPressed('j')
         + 2 * keyPressed('k')
-        + keyPressed('l');
+        + keyPressed('l')
 
-      level.player.object.velocity.x = 0;
-      level.player.object.velocity.y = 0;
+      level.player.x = 0
+      level.player.y = 0
 
       if (moveFlags & 0b1000) {
-        level.player.object.velocity.x -= SPEED;
+        level.player.x -= 1
       }
 
       if (moveFlags & 0b0001) {
-        level.player.object.velocity.x += SPEED;
+        level.player.x += 1
       }
 
       if (moveFlags & 0b0010) {
-        level.player.object.velocity.y -= SPEED;
+        level.player.y -= 1
       }
 
       if (moveFlags & 0b0100) {
-        level.player.object.velocity.y += SPEED;
+        level.player.y += 1
       }
+        */
 
-      level.player.update();
+      level.player.update(delta, acc >= 1, acc);
+      if (acc >= 1) {
+        acc = 0;
+      }
     },
 
     render () {
@@ -4308,6 +4371,58 @@ Promise.resolve().then(async () => {
           context$1.fillText(id, x * 8 + .2, y * 8 + 8.2);
           context$1.fillStyle = '#fff';
           context$1.fillText(id, x * 8, y * 8 + 8);
+        });
+      }
+
+      if (debug.collision) {
+        level.collisions.map((flags, i) => {
+          const x = 8 * (i % 16);
+          const y = 8 * (i / 16 ^ 0);
+
+          context$1.strokeStyle = '#f00';
+          context$1.lineWidth = .1;
+
+          if (flags & 0b10000000) {
+            context$1.moveTo(x, y);
+            context$1.lineTo(x + 4, y);
+          }
+
+          if (flags & 0b01000000) {
+            context$1.moveTo(x + 4, y);
+            context$1.lineTo(x + 8, y);
+          }
+
+          if (flags & 0b00100000) {
+            context$1.moveTo(x + 8, y);
+            context$1.lineTo(x + 8, y + 4);
+          }
+
+          if (flags & 0b00010000) {
+            context$1.moveTo(x + 8, y + 4);
+            context$1.lineTo(x + 8, y + 8);
+          }
+
+          if (flags & 0b00001000) {
+            context$1.moveTo(x + 8, y + 8);
+            context$1.lineTo(x + 4, y + 8);
+          }
+
+          if (flags & 0b00000100) {
+            context$1.moveTo(x + 4, y + 8);
+            context$1.lineTo(x, y + 8);
+          }
+
+          if (flags & 0b00000010) {
+            context$1.moveTo(x, y + 8);
+            context$1.lineTo(x, y + 4);
+          }
+
+          if (flags & 0b00000001) {
+            context$1.moveTo(x, y + 4);
+            context$1.lineTo(x, y);
+          }
+
+          context$1.stroke();
         });
       }
       // @endif

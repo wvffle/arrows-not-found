@@ -120,6 +120,31 @@ export default async function levelLoader (n = 0) {
     return id
   })
 
+  const collisionMap = {
+    43: 0b00100000,
+    45: 0b00010000,
+    46: 0b00000010,
+
+    59: 0b11000000,
+    18: 0b00110000,
+    55: 0b00110000,
+    15: 0b00000011,
+
+    2:  0b11001100,
+    30: 0b11001100,
+    31: 0b00110011,
+
+
+    57: 0b11001111,
+    4:  0b11111100,
+    32: 0b11111100,
+    58: 0b11111100,
+
+    28: 0b11111111,
+  }
+
+  const collisions = map.data.map(id => collisionMap[id] || 0)
+
   const engine = TileEngine({
     tilewidth: tileSize,
     tileheight: tileSize,
@@ -132,13 +157,14 @@ export default async function levelLoader (n = 0) {
   const player = new Entity(Sprite({
     ...indexToRenderedXY(meta.spawn),
     image: getTransparentSprite(image, tileSize, TILE_SPAWN)
-  }))
+  }), { map: map.data, collisions })
 
   engine.addObject(player)
 
   return { 
     engine, 
-    player
+    player,
+    collisions
   }
 }
 

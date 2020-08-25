@@ -1,3 +1,5 @@
+import { TRANSPARENT_PIXELS, SCALE } from './constants.js'
+
 export const bfs = (start, { enter, leave }) => {
   const queue = [start]
   const visited = new Set()
@@ -25,7 +27,24 @@ export const bfs = (start, { enter, leave }) => {
   }
 }
 
-export const getTransparentSprite = (image, size, id, transparentColor = '#222323') => {
+export const drawOverlay = (context, size, transparentColors = TRANSPARENT_PIXELS) => {
+  const imageData = context.getImageData(0, 0, size * SCALE, size * SCALE)
+  const { data } = imageData
+
+  for (let i = 0; i < data.length; i += 4) {
+    for (const [r, g, b] of transparentColors) {
+      if (data[i] === r && data[i + 1] === g && data[i + 2] === b) {
+        data[i + 3] = 0
+      }
+    }
+  }
+
+  const canvas = document.getElementById('o')
+  canvas.width = canvas.height = size * SCALE
+  canvas.getContext('2d').putImageData(imageData, 0, 0)
+}
+
+export const getTransparentSprite = (image, size, id, transparentColors = TRANSPARENT_PIXELS) => {
   const canvas = document.createElement('canvas')
   const context = canvas.getContext('2d')
 
@@ -40,14 +59,14 @@ export const getTransparentSprite = (image, size, id, transparentColor = '#22232
   const { data } = imageData
 
   for (let i = 0; i < data.length; i += 4) {
-    if (data[i] === 34 && data[i + 1] === data[i + 2] && data[i + 2] === 35) {
-      data[i + 3] = 0
+    for (const [r, g, b] of transparentColors) {
+      if (data[i] === r && data[i + 1] === g && data[i + 2] === b) {
+        data[i + 3] = 0
+      }
     }
   }
 
   context.putImageData(imageData, 0, 0)
-
-  // 34 35 35
 
   return canvas
 }

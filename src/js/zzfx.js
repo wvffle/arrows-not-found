@@ -391,4 +391,4 @@ const zzfxMicro =     // play a sound
     source.start();
     return source;
 }
-const zzfxX = new (window.AudioContext||webkitAudioContext);
+export default const zzfxX = new (window.AudioContext||webkitAudioContext);

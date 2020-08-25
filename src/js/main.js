@@ -2,6 +2,7 @@ import { init, GameLoop, initKeys, bindKeys, keyPressed } from 'kontra'
 import { creditsText } from './views/credits.js'
 import { Box2, Vector2 as Vec2 } from 'math-ds'
 import { DIRECTION_LEFT, DIRECTION_DOWN, DIRECTION_UP, DIRECTION_RIGHT, SCALE, GAME_SPEED } from './constants.js'
+import { drawOverlay } from './utils.js'
 
 import loadLevel from './views/game.js'
 
@@ -55,32 +56,6 @@ Promise.resolve().then(async () => {
     update (delta) {
       acc += delta
 
-        /*
-      const moveFlags = 8 * keyPressed('h')
-        + 4 * keyPressed('j')
-        + 2 * keyPressed('k')
-        + keyPressed('l')
-
-      level.player.x = 0
-      level.player.y = 0
-
-      if (moveFlags & 0b1000) {
-        level.player.x -= 1
-      }
-
-      if (moveFlags & 0b0001) {
-        level.player.x += 1
-      }
-
-      if (moveFlags & 0b0010) {
-        level.player.y -= 1
-      }
-
-      if (moveFlags & 0b0100) {
-        level.player.y += 1
-      }
-        */
-
       level.player.update(delta, acc >= 1 / GAME_SPEED)
       if (acc >= 1 / GAME_SPEED) {
         acc = 0
@@ -89,6 +64,7 @@ Promise.resolve().then(async () => {
 
     render () {
       level.engine.render()
+      drawOverlay(level.engine.context, level.engine.mapwidth)
       level.player.render()
 
       // @ifdef DEBUG

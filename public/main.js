@@ -2702,6 +2702,10 @@ function TileEngine(properties) {
   })
 };// Rendering
 const SCALE = 5;
+const TRANSPARENT_PIXELS = [
+  [67, 67, 79],
+  [34, 35, 35]
+];
 
 // Tiles
 const TILE_GROUND = 16;
@@ -2716,8 +2720,72 @@ const DIRECTION_DOWN = 2;
 const DIRECTION_RIGHT = 3;
 const DIRECTION_UP = 4;
 
+const COLLISIONS = {
+    43: 0b0100,
+    45: 0b0100,
+    46: 0b0001,
+    59: 0b1000,
+    18: 0b0100,
+    55: 0b0100,
+    15: 0b0001,
+
+    2:  0b1010,
+    30: 0b1010,
+    31: 0b0101,
+
+
+    57: 0b1011,
+    4:  0b1110,
+    32: 0b1110,
+    58: 0b1110,
+
+    28: 0b1111
+  };
+
 // Game options
-const GAME_SPEED = 2;var tilesets = [
+const GAME_SPEED = 2;const drawOverlay = (context, size, transparentColors = TRANSPARENT_PIXELS) => {
+  const imageData = context.getImageData(0, 0, size * SCALE, size * SCALE);
+  const { data } = imageData;
+
+  for (let i = 0; i < data.length; i += 4) {
+    for (const [r, g, b] of transparentColors) {
+      if (data[i] === r && data[i + 1] === g && data[i + 2] === b) {
+        data[i + 3] = 0;
+      }
+    }
+  }
+
+  const canvas = document.getElementById('o');
+  canvas.width = canvas.height = size * SCALE;
+  canvas.getContext('2d').putImageData(imageData, 0, 0);
+};
+
+const getTransparentSprite = (image, size, id, transparentColors = TRANSPARENT_PIXELS) => {
+  const canvas = document.createElement('canvas');
+  const context = canvas.getContext('2d');
+
+  canvas.width = canvas.height = size;
+
+  const width = image.width / size;
+  const x = size * ((id - 1) % width);
+  const y = size * ((id - 1) / width ^ 0);
+  context.drawImage(image, x, y, size, size, 0, 0, size, size);
+
+  const imageData = context.getImageData(0, 0, size, size);
+  const { data } = imageData;
+
+  for (let i = 0; i < data.length; i += 4) {
+    for (const [r, g, b] of transparentColors) {
+      if (data[i] === r && data[i + 1] === g && data[i + 2] === b) {
+        data[i + 3] = 0;
+      }
+    }
+  }
+
+  context.putImageData(imageData, 0, 0);
+
+  return canvas
+};var tilesets = [
 	"colored_tilemap_packed.png"
 ];
 var layers = [
@@ -4045,32 +4113,7 @@ var tileSize = 8;var layers$1 = [
 			"209": 4
 		}
 	}
-];const getTransparentSprite = (image, size, id, transparentColor = '#222323') => {
-  const canvas = document.createElement('canvas');
-  const context = canvas.getContext('2d');
-
-  canvas.width = canvas.height = size;
-
-  const width = image.width / size;
-  const x = size * ((id - 1) % width);
-  const y = size * ((id - 1) / width ^ 0);
-  context.drawImage(image, x, y, size, size, 0, 0, size, size);
-
-  const imageData = context.getImageData(0, 0, size, size);
-  const { data } = imageData;
-
-  for (let i = 0; i < data.length; i += 4) {
-    if (data[i] === 34 && data[i + 1] === data[i + 2] && data[i + 2] === 35) {
-      data[i + 3] = 0;
-    }
-  }
-
-  context.putImageData(imageData, 0, 0);
-
-  // 34 35 35
-
-  return canvas
-};class Entity {
+];class Entity {
   constructor (gameObject, level) {
     this.object = gameObject;
     this.level = level;
@@ -4239,29 +4282,6 @@ async function levelLoader (n = 0) {
     return id
   });
 
-  const collisionMap = {
-    43: 0b0100,
-    45: 0b0100,
-    46: 0b0001,
-
-    59: 0b1000,
-    18: 0b0100,
-    55: 0b0100,
-    15: 0b0001,
-
-    2:  0b1010,
-    30: 0b1010,
-    31: 0b0101,
-
-
-    57: 0b1011,
-    4:  0b1110,
-    32: 0b1110,
-    58: 0b1110,
-
-    28: 0b1111,
-  };
-
   class GraphNode {
     constructor (id, i) {
       this.id = id;
@@ -4276,7 +4296,6 @@ async function levelLoader (n = 0) {
     }
   }
 
-  // const collisions = map.data.map(id => collisionMap[id] || 0)
   const graph = map.data.map((id, i) => new GraphNode(id, i));
 
   graph.map((node, i) => {
@@ -4284,8 +4303,8 @@ async function levelLoader (n = 0) {
     if (i - width >= 0) {
       const node2 = graph[i - width];
 
-      const c1 = collisionMap[node.id];
-      const c2 = collisionMap[node2.id];
+      const c1 = COLLISIONS[node.id];
+      const c2 = COLLISIONS[node2.id];
 
       if (!(c1 & 0b1000) && !(c2 & 0b0010)) {
         node.add(node2);
@@ -4296,8 +4315,8 @@ async function levelLoader (n = 0) {
     if (i % width !== 0) {
       const node2 = graph[i - 1];
 
-      const c1 = collisionMap[node.id];
-      const c2 = collisionMap[node2.id];
+      const c1 = COLLISIONS[node.id];
+      const c2 = COLLISIONS[node2.id];
 
       if (!(c1 & 0b0001) && !(c2 & 0b0100)) {
         node.add(node2);
@@ -4376,32 +4395,6 @@ Promise.resolve().then(async () => {
     update (delta) {
       acc += delta;
 
-        /*
-      const moveFlags = 8 * keyPressed('h')
-        + 4 * keyPressed('j')
-        + 2 * keyPressed('k')
-        + keyPressed('l')
-
-      level.player.x = 0
-      level.player.y = 0
-
-      if (moveFlags & 0b1000) {
-        level.player.x -= 1
-      }
-
-      if (moveFlags & 0b0001) {
-        level.player.x += 1
-      }
-
-      if (moveFlags & 0b0010) {
-        level.player.y -= 1
-      }
-
-      if (moveFlags & 0b0100) {
-        level.player.y += 1
-      }
-        */
-
       level.player.update(delta, acc >= 1 / GAME_SPEED);
       if (acc >= 1 / GAME_SPEED) {
         acc = 0;
@@ -4410,6 +4403,7 @@ Promise.resolve().then(async () => {
 
     render () {
       level.engine.render();
+      drawOverlay(level.engine.context, level.engine.mapwidth);
       level.player.render();
 
       // @ifdef DEBUG

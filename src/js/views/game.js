@@ -5,7 +5,7 @@ import { layers as level3 } from '../../maps/3.json'
 import { layers as level4 } from '../../maps/4.json'
 import { layers as level5 } from '../../maps/5.json'
 import { getTransparentSprite } from '../utils.js'
-import { HEIGHT as H, WIDTH as W, TILE_SPAWN, TILE_GROUND } from '../constants.js'
+import { HEIGHT as H, WIDTH as W, TILE_SPAWN, TILE_GROUND, COLLISIONS } from '../constants.js'
 import Entity from '../entity.js'
 
 const TILESET = new Promise((resolve, reject) => {
@@ -115,29 +115,6 @@ export default async function levelLoader (n = 0) {
     return id
   })
 
-  const collisionMap = {
-    43: 0b0100,
-    45: 0b0100,
-    46: 0b0001,
-
-    59: 0b1000,
-    18: 0b0100,
-    55: 0b0100,
-    15: 0b0001,
-
-    2:  0b1010,
-    30: 0b1010,
-    31: 0b0101,
-
-
-    57: 0b1011,
-    4:  0b1110,
-    32: 0b1110,
-    58: 0b1110,
-
-    28: 0b1111,
-  }
-
   class GraphNode {
     constructor (id, i) {
       this.id = id
@@ -152,7 +129,6 @@ export default async function levelLoader (n = 0) {
     }
   }
 
-  // const collisions = map.data.map(id => collisionMap[id] || 0)
   const graph = map.data.map((id, i) => new GraphNode(id, i))
 
   graph.map((node, i) => {
@@ -160,8 +136,8 @@ export default async function levelLoader (n = 0) {
     if (i - width >= 0) {
       const node2 = graph[i - width]
 
-      const c1 = collisionMap[node.id]
-      const c2 = collisionMap[node2.id]
+      const c1 = COLLISIONS[node.id]
+      const c2 = COLLISIONS[node2.id]
 
       if (!(c1 & 0b1000) && !(c2 & 0b0010)) {
         node.add(node2)
@@ -172,8 +148,8 @@ export default async function levelLoader (n = 0) {
     if (i % width !== 0) {
       const node2 = graph[i - 1]
 
-      const c1 = collisionMap[node.id]
-      const c2 = collisionMap[node2.id]
+      const c1 = COLLISIONS[node.id]
+      const c2 = COLLISIONS[node2.id]
 
       if (!(c1 & 0b0001) && !(c2 & 0b0100)) {
         node.add(node2)

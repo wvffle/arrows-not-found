@@ -27,11 +27,11 @@ export const bfs = (start, { enter, leave }) => {
   }
 }
 
-export const drawOverlay = (context, size, transparentColors = TRANSPARENT_PIXELS) => {
-  const imageData = context.getImageData(0, 0, size * SCALE, size * SCALE)
+export const getOverlay = (context, size, transparentColors = TRANSPARENT_PIXELS) => {
+  const imageData = context.getImageData(0, 0, size, size)
   const { data } = imageData
 
-  for (let i = 0; i < data.length; i += 4) {
+  for (let i = 0, j = 0; i < data.length; i += 4) {
     for (const [r, g, b] of transparentColors) {
       if (data[i] === r && data[i + 1] === g && data[i + 2] === b) {
         data[i + 3] = 0
@@ -39,9 +39,9 @@ export const drawOverlay = (context, size, transparentColors = TRANSPARENT_PIXEL
     }
   }
 
-  const canvas = document.getElementById('o')
-  canvas.width = canvas.height = size * SCALE
+  const canvas = new OffscreenCanvas(size, size)
   canvas.getContext('2d').putImageData(imageData, 0, 0)
+  return canvas
 }
 
 export const getTransparentSprite = (image, size, id, transparentColors = TRANSPARENT_PIXELS) => {

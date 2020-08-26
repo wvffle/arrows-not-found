@@ -2743,49 +2743,7 @@ const COLLISIONS = {
   };
 
 // Game options
-const GAME_SPEED = 2;const drawOverlay = (context, size, transparentColors = TRANSPARENT_PIXELS) => {
-  const imageData = context.getImageData(0, 0, size * SCALE, size * SCALE);
-  const { data } = imageData;
-
-  for (let i = 0; i < data.length; i += 4) {
-    for (const [r, g, b] of transparentColors) {
-      if (data[i] === r && data[i + 1] === g && data[i + 2] === b) {
-        data[i + 3] = 0;
-      }
-    }
-  }
-
-  const canvas = document.getElementById('o');
-  canvas.width = canvas.height = size * SCALE;
-  canvas.getContext('2d').putImageData(imageData, 0, 0);
-};
-
-const getTransparentSprite = (image, size, id, transparentColors = TRANSPARENT_PIXELS) => {
-  const canvas = document.createElement('canvas');
-  const context = canvas.getContext('2d');
-
-  canvas.width = canvas.height = size;
-
-  const width = image.width / size;
-  const x = size * ((id - 1) % width);
-  const y = size * ((id - 1) / width ^ 0);
-  context.drawImage(image, x, y, size, size, 0, 0, size, size);
-
-  const imageData = context.getImageData(0, 0, size, size);
-  const { data } = imageData;
-
-  for (let i = 0; i < data.length; i += 4) {
-    for (const [r, g, b] of transparentColors) {
-      if (data[i] === r && data[i + 1] === g && data[i + 2] === b) {
-        data[i + 3] = 0;
-      }
-    }
-  }
-
-  context.putImageData(imageData, 0, 0);
-
-  return canvas
-};var tilesets = [
+const GAME_SPEED = 2;var tilesets = [
 	"colored_tilemap_packed.png"
 ];
 var layers = [
@@ -4113,7 +4071,49 @@ var tileSize = 8;var layers$1 = [
 			"209": 4
 		}
 	}
-];class Entity {
+];const getOverlay = (context, size, transparentColors = TRANSPARENT_PIXELS) => {
+  const imageData = context.getImageData(0, 0, size, size);
+  const { data } = imageData;
+
+  for (let i = 0; i < data.length; i += 4) {
+    for (const [r, g, b] of transparentColors) {
+      if (data[i] === r && data[i + 1] === g && data[i + 2] === b) {
+        data[i + 3] = 0;
+      }
+    }
+  }
+
+  const canvas = new OffscreenCanvas(size, size);
+  canvas.getContext('2d').putImageData(imageData, 0, 0);
+  return canvas
+};
+
+const getTransparentSprite = (image, size, id, transparentColors = TRANSPARENT_PIXELS) => {
+  const canvas = document.createElement('canvas');
+  const context = canvas.getContext('2d');
+
+  canvas.width = canvas.height = size;
+
+  const width = image.width / size;
+  const x = size * ((id - 1) % width);
+  const y = size * ((id - 1) / width ^ 0);
+  context.drawImage(image, x, y, size, size, 0, 0, size, size);
+
+  const imageData = context.getImageData(0, 0, size, size);
+  const { data } = imageData;
+
+  for (let i = 0; i < data.length; i += 4) {
+    for (const [r, g, b] of transparentColors) {
+      if (data[i] === r && data[i + 1] === g && data[i + 2] === b) {
+        data[i + 3] = 0;
+      }
+    }
+  }
+
+  context.putImageData(imageData, 0, 0);
+
+  return canvas
+};class Entity {
   constructor (gameObject, level) {
     this.object = gameObject;
     this.level = level;
@@ -4200,7 +4200,7 @@ const indexToRenderedXY = i => ({
   y: tileSize * (i / width ^ 0) 
 });
 
-async function levelLoader (n = 0) {
+async function loadLevel (n = 0) {
   const image = await TILESET;
 
   const [map] = MAPS[n];
@@ -4338,19 +4338,30 @@ async function levelLoader (n = 0) {
     image: getTransparentSprite(image, tileSize, TILE_SPAWN)
   }), { map: map.data, graph });
 
-  engine.addObject(player);
+  // engine.addObject(player)
+
+  // Initial render to make engine.context available below
+  engine.render();
+
+  const topLayer = factory$3({
+    x: 0,
+    y: 0,
+    image: getOverlay(engine.context, engine.mapwidth)
+  });
+
+  console.log(topLayer);
 
   return { 
     engine, 
     player,
-    graph
+    graph,
+    topLayer
   }
 }const { canvas, context: context$1 } = init('c');
 
 // Scale context
 canvas.height = canvas.width = SCALE * 8 * 16;
 context$1.imageSmoothingEnabled = false;
-context$1.scale(SCALE, SCALE);
 
 Promise.resolve().then(async () => {
   // Init controls
@@ -4358,7 +4369,7 @@ Promise.resolve().then(async () => {
 
   // Init objects and scenes
   const credits = creditsText();
-  let level = await levelLoader();
+  let level = await loadLevel();
 
   // Bind keys
   
@@ -4378,7 +4389,9 @@ Promise.resolve().then(async () => {
 
   for (const n of [0, 1, 2, 3, 4]) {
     bindKeys((n + 1).toString(), async () => {
-      level = await levelLoader(n);
+      context$1.scale(1 / SCALE, 1 / SCALE);
+      level = await loadLevel(n);
+      context$1.scale(SCALE, SCALE);
     });
   }
   // @endif
@@ -4391,6 +4404,9 @@ Promise.resolve().then(async () => {
   bindKeys('k', () => (player.direction = DIRECTION_UP));
   bindKeys('l', () => (player.direction = DIRECTION_RIGHT));
 
+  // Apply the scale after creating overlay
+  context$1.scale(SCALE, SCALE);
+
   GameLoop({
     update (delta) {
       acc += delta;
@@ -4402,9 +4418,9 @@ Promise.resolve().then(async () => {
     },
 
     render () {
-      level.engine.render();
-      drawOverlay(level.engine.context, level.engine.mapwidth);
+      // level.engine.render()
       level.player.render();
+      level.topLayer.render();
 
       // @ifdef DEBUG
       if (debug.ids) {

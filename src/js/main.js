@@ -2,7 +2,6 @@ import { init, GameLoop, initKeys, bindKeys, keyPressed } from 'kontra'
 import { creditsText } from './views/credits.js'
 import { Box2, Vector2 as Vec2 } from 'math-ds'
 import { DIRECTION_LEFT, DIRECTION_DOWN, DIRECTION_UP, DIRECTION_RIGHT, SCALE, GAME_SPEED } from './constants.js'
-import { drawOverlay } from './utils.js'
 
 import loadLevel from './views/game.js'
 
@@ -11,7 +10,6 @@ const { canvas, context } = init('c')
 // Scale context
 canvas.height = canvas.width = SCALE * 8 * 16
 context.imageSmoothingEnabled = false
-context.scale(SCALE, SCALE)
 
 Promise.resolve().then(async () => {
   // Init controls
@@ -39,7 +37,9 @@ Promise.resolve().then(async () => {
 
   for (const n of [0, 1, 2, 3, 4]) {
     bindKeys((n + 1).toString(), async () => {
+      context.scale(1 / SCALE, 1 / SCALE)
       level = await loadLevel(n)
+      context.scale(SCALE, SCALE)
     })
   }
   // @endif
@@ -52,6 +52,9 @@ Promise.resolve().then(async () => {
   bindKeys('k', () => (player.direction = DIRECTION_UP))
   bindKeys('l', () => (player.direction = DIRECTION_RIGHT))
 
+  // Apply the scale after creating overlay
+  context.scale(SCALE, SCALE)
+
   GameLoop({
     update (delta) {
       acc += delta
@@ -63,9 +66,9 @@ Promise.resolve().then(async () => {
     },
 
     render () {
-      level.engine.render()
-      drawOverlay(level.engine.context, level.engine.mapwidth)
+      // level.engine.render()
       level.player.render()
+      level.topLayer.render()
 
       // @ifdef DEBUG
       if (debug.ids) {

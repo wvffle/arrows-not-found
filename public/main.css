@@ -6,14 +6,7 @@ body {
   background: #222323;
   display: flex;
 }
-.s {
-  position: relative;
-  margin: auto;
-}
-#o {
-  position: absolute;
-  top: 0;
-}
 canvas {
   display: block;
+  margin: auto;
 }

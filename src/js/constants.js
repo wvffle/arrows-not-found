@@ -11,6 +11,8 @@ export const WIDTH = innerWidth
 // Tiles
 export const TILE_GROUND = 16
 export const TILE_SPAWN = 5
+export const TILE_WALL_LEFT = 15
+export const TILE_WALL_RIGHT = 18
 
 // Physics
 export const ERROR_CORRECTION = 0.13333333333331593

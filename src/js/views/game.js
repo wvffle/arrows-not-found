@@ -19,6 +19,17 @@ const TILESET = new Promise((resolve, reject) => {
   img.onerror = err => reject(err)
 })
 
+const OVERLAY = new Promise((resolve, reject) => {
+  const img = new Image
+  img.src = 'o.png'
+
+  img.onload = () => {
+    resolve(img)
+  }
+
+  img.onerror = err => reject(err)
+})
+
 const MAPS = [
   level1,
   level2,
@@ -34,8 +45,7 @@ const indexToRenderedXY = i => ({
 })
 
 export default async function loadLevel (n = 0) {
-  const image = await TILESET
-
+  const [image, overlay] = await Promise.all([TILESET, OVERLAY])
   const [map] = MAPS[n]
 
   const meta = {
@@ -168,7 +178,7 @@ export default async function loadLevel (n = 0) {
 
   const player = new Entity(Sprite({
     ...indexToRenderedXY(meta.spawn),
-    image: getTransparentSprite(image, tileSize, TILE_SPAWN)
+    image: getTransparentSprite(image, TILE_SPAWN)
   }), { map: map.data, graph })
 
   // engine.addObject(player)
@@ -179,10 +189,8 @@ export default async function loadLevel (n = 0) {
   const topLayer = Sprite({
     x: 0,
     y: 0,
-    image: getOverlay(engine.context, engine.mapwidth)
+    image: getOverlay(map.data, overlay)
   })
-
-  console.log(topLayer)
 
   return { 
     engine, 

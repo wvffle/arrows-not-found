@@ -3,8 +3,8 @@
  <editorsettings>
   <export target="map.js" format="js"/>
  </editorsettings>
- <tileset firstgid="1" name="colored_tilemap_packed" tilewidth="8" tileheight="8" tilecount="140" columns="14">
-  <image source="colored_tilemap_packed.png" width="112" height="80"/>
+ <tileset firstgid="1" name="t" tilewidth="8" tileheight="8" tilecount="140" columns="14">
+  <image source="t.png" width="112" height="80"/>
  </tileset>
  <layer id="1" name="Level 1" width="16" height="16">
   <data encoding="csv">

@@ -28,7 +28,7 @@ if (!PRODUCTION) {
   })
 
   // NOTE: Added the tileset png image
-  for (const file of ['main.css', 'main.js', 'colored_tilemap_packed.png']) {
+  for (const file of ['main.css', 'main.js', 't.png', 'o.png']) {
     server.on(`GET /public/${file}`, async (req, res) => {
       await sendFile(res, `public/${file}`)
       res.end()

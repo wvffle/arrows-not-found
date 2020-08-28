@@ -66,7 +66,7 @@ Promise.resolve().then(async () => {
     },
 
     render () {
-      // level.engine.render()
+      level.engine.render()
       level.player.render()
       level.topLayer.render()
 
